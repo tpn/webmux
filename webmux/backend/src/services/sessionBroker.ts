@@ -494,6 +494,7 @@ export class SessionBroker extends EventEmitter {
   move(sessionId: string, row: number, col: number): Session {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);
+    if (isAgentWorkspace(session.workspace)) throw new Error('Agent workspace sessions cannot be moved');
     assertTerminalGridPosition(row, col);
     session.row = row;
     session.col = col;

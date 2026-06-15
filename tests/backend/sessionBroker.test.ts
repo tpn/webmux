@@ -137,6 +137,22 @@ describe('SessionBroker', () => {
     expect(() => broker.move(session.id, 0, 1)).toThrow('exceeds max_cols 1');
   });
 
+  it('rejects moves for agent workspace sessions', async () => {
+    const broker = new SessionBroker();
+    await broker.initialize();
+    const { session } = await broker.ensureAgentAttach(
+      'anonymous',
+      'codex',
+      'codexes',
+      'codex-a',
+      80,
+      24,
+      ['tmux', '-L', 'codex', 'attach-session', '-t', 'codex-a'],
+    );
+
+    expect(() => broker.move(session.id, 1, 1)).toThrow('Agent workspace sessions cannot be moved');
+  });
+
   it('persists sessions to disk', async () => {
     const broker = new SessionBroker();
     await broker.initialize();

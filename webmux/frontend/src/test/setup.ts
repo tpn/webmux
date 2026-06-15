@@ -4,6 +4,7 @@ import { afterEach } from 'vitest';
 
 afterEach(() => {
   cleanup();
+  store.clear();
 });
 
 const store = new Map<string, string>();
