@@ -23,6 +23,8 @@ function makeAuth(overrides: Partial<AuthState> = {}): AuthState {
 }
 
 describe('TopBar', () => {
+  const originalLocation = Object.getOwnPropertyDescriptor(window, 'location');
+
   const defaultTopBarProps = () => ({
     auth: makeAuth(),
     fontSize: 14,
@@ -34,6 +36,26 @@ describe('TopBar', () => {
     secureMode: true,
     currentUser: 'admin',
   });
+
+  const withLocation = (hostname: string, run: () => void) => {
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...window.location,
+        protocol: 'https:',
+        hostname,
+        host: hostname,
+        href: `https://${hostname}/`,
+      },
+      configurable: true,
+    });
+    try {
+      run();
+    } finally {
+      if (originalLocation) {
+        Object.defineProperty(window, 'location', originalLocation);
+      }
+    }
+  };
 
   it('renders logo and controls', () => {
     render(<TopBar {...defaultTopBarProps()} />, { wrapper });
@@ -112,5 +134,37 @@ describe('TopBar', () => {
     expect(onTermSizeChange).toHaveBeenCalledWith(80, 29);
     fireEvent.click(screen.getByText('R-'));
     expect(onTermSizeChange).toHaveBeenCalledWith(80, 19);
+  });
+
+  it('shows sorted host buttons on the right for trent.me and disables the current host', () => {
+    withLocation('nv1-webmux.trent.me', () => {
+      render(<TopBar {...defaultTopBarProps()} />, { wrapper });
+
+      const hostSwitcher = screen.getByTestId('host-switcher');
+      expect(hostSwitcher.parentElement?.getAttribute('data-testid')).toBe('topbar');
+      expect(Array.from(hostSwitcher.querySelectorAll('[data-testid="host-switch-link"], [data-testid="host-switch-current"]')).map(el => el.textContent)).toEqual([
+        'dgx',
+        'leopard',
+        'nv1',
+        'spark',
+      ]);
+
+      expect(screen.getByTestId('host-switch-current')).toHaveTextContent('nv1');
+      expect(screen.getByTestId('host-switch-current').tagName.toLowerCase()).toBe('span');
+      expect(screen.getByRole('link', { name: 'dgx' })).toHaveAttribute('href', 'https://dgx-webmux.trent.me/');
+      expect(screen.getByRole('link', { name: 'leopard' })).toHaveAttribute('href', 'https://leopard-webmux.trent.me/');
+      expect(screen.getByRole('link', { name: 'spark' })).toHaveAttribute('href', 'https://spark-webmux.trent.me/');
+    });
+  });
+
+  it('keeps host switch links on tpn.nyc when the current instance is tpn.nyc', () => {
+    withLocation('spark-webmux.tpn.nyc', () => {
+      render(<TopBar {...defaultTopBarProps()} />, { wrapper });
+
+      expect(screen.getByTestId('host-switch-current')).toHaveTextContent('spark');
+      expect(screen.getByRole('link', { name: 'dgx' })).toHaveAttribute('href', 'https://dgx-webmux.tpn.nyc/');
+      expect(screen.getByRole('link', { name: 'leopard' })).toHaveAttribute('href', 'https://leopard-webmux.tpn.nyc/');
+      expect(screen.getByRole('link', { name: 'nv1' })).toHaveAttribute('href', 'https://nv1-webmux.tpn.nyc/');
+    });
   });
 });

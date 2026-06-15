@@ -5,6 +5,32 @@ import { useInputBroadcast } from '../contexts/InputBroadcastContext';
 import { useWorkspacePane } from '../contexts/WorkspacePaneContext';
 import { HelpDialog } from './HelpDialog';
 
+const HOST_SWITCHES = [
+  { key: 'dgx', publicPrefix: 'dgx-webmux' },
+  { key: 'leopard', publicPrefix: 'leopard-webmux' },
+  { key: 'nv1', publicPrefix: 'nv1-webmux' },
+  { key: 'spark', publicPrefix: 'spark-webmux' },
+];
+
+function getHostSwitchContext() {
+  const hostname = window.location.hostname.toLowerCase();
+  const suffix = hostname.endsWith('.trent.me') ? 'trent.me' : hostname.endsWith('.tpn.nyc') ? 'tpn.nyc' : null;
+  if (!suffix) return null;
+
+  const subdomain = hostname.slice(0, -suffix.length - 1);
+  const current = HOST_SWITCHES.find(host => host.publicPrefix === subdomain || host.key === subdomain);
+  if (!current) return null;
+
+  const protocol = window.location.protocol || 'https:';
+  return {
+    currentKey: current.key,
+    hosts: HOST_SWITCHES.map(host => ({
+      ...host,
+      href: `${protocol}//${host.publicPrefix}.${suffix}/`,
+    })),
+  };
+}
+
 interface TopBarProps {
   auth: AuthState;
   fontSize: number;
@@ -48,6 +74,7 @@ export function TopBar({
   const [editingSize, setEditingSize] = useState(false);
   const [sizeInput, setSizeInput] = useState('');
   const sizeInputRef = useRef<HTMLInputElement>(null);
+  const hostSwitchContext = getHostSwitchContext();
 
   const commitSize = () => {
     const match = sizeInput.match(/^\s*(\d+)\s*[x×]\s*(\d+)\s*$/i);
@@ -62,7 +89,7 @@ export function TopBar({
   return (
     <>
     {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
-    <div style={styles.bar}>
+    <div style={styles.bar} data-testid="topbar">
       <div style={styles.left}>
         <span style={styles.logo}>{'\u25a6'} WebMux</span>
         <button
@@ -176,7 +203,13 @@ export function TopBar({
         </button>
       </div>
 
-      <div style={styles.right}>
+      <div
+        style={{
+          ...styles.right,
+          ...(hostSwitchContext ? styles.rightWithHostSwitcher : {}),
+        }}
+        data-testid="topbar-right"
+      >
         {activePane === 'terminals' && (
           <div style={styles.fontControls}>
             <button
@@ -285,6 +318,32 @@ export function TopBar({
         )}
         <button style={styles.helpBtn} onClick={() => setShowHelp(true)} title="Usage help">?</button>
       </div>
+      {hostSwitchContext && (
+        <div style={styles.hostSwitcher} data-testid="host-switcher" aria-label="Switch WebMux host">
+          {hostSwitchContext.hosts.map(host => (
+            host.key === hostSwitchContext.currentKey ? (
+              <span
+                key={host.key}
+                style={{ ...styles.hostSwitchButton, ...styles.hostSwitchCurrent }}
+                data-testid="host-switch-current"
+                title={`${host.key} is the current host`}
+              >
+                {host.key}
+              </span>
+            ) : (
+              <a
+                key={host.key}
+                href={host.href}
+                style={styles.hostSwitchButton}
+                data-testid="host-switch-link"
+                title={`Open ${host.key}`}
+              >
+                {host.key}
+              </a>
+            )
+          ))}
+        </div>
+      )}
     </div>
     </>
   );
@@ -295,17 +354,24 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
+    position: 'relative',
     height: 44,
     background: '#12122a',
     borderBottom: '1px solid #333366',
     padding: '0 16px',
     flexShrink: 0,
     zIndex: 100,
+    overflow: 'hidden',
   },
   left: {
     display: 'flex',
     alignItems: 'center',
-    gap: 16,
+    gap: 8,
+    flex: '1 1 auto',
+    minWidth: 0,
+    overflowX: 'auto',
+    scrollbarWidth: 'none',
   },
   logo: {
     fontSize: 16,
@@ -325,7 +391,13 @@ const styles: Record<string, React.CSSProperties> = {
   right: {
     display: 'flex',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
+    flex: '0 0 auto',
+    marginLeft: 'auto',
+    minWidth: 'max-content',
+  },
+  rightWithHostSwitcher: {
+    paddingRight: 214,
   },
   fontControls: {
     display: 'flex',
@@ -398,5 +470,36 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     padding: 0,
     lineHeight: 1,
+  },
+  hostSwitcher: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+    position: 'absolute',
+    right: 16,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    zIndex: 2,
+  },
+  hostSwitchButton: {
+    background: '#1a1a3a',
+    border: '1px solid #333366',
+    borderRadius: 4,
+    color: '#aaa',
+    cursor: 'pointer',
+    fontSize: 12,
+    fontWeight: 600,
+    lineHeight: 1,
+    minWidth: 38,
+    padding: '5px 8px',
+    textAlign: 'center',
+    textDecoration: 'none',
+  },
+  hostSwitchCurrent: {
+    background: '#1f3f2c',
+    borderColor: '#4aaa6a',
+    color: '#e8fff0',
+    cursor: 'default',
   },
 };
