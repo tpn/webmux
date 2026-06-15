@@ -150,16 +150,14 @@ describe('App', () => {
     await waitFor(() => {
       expect(api.getAgentSessions).toHaveBeenCalledWith('codex');
     });
-    await waitFor(() => {
-      expect(api.createAgentScratch).toHaveBeenCalledWith('codex', { selectedName: undefined, cols: 40, rows: 24 });
-    });
     expect(api.getAgentSessions).toHaveBeenCalledTimes(1);
+    expect(api.createAgentScratch).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Terminals' }));
     fireEvent.click(screen.getByRole('button', { name: 'Codexes' }));
 
     expect(api.getAgentSessions).toHaveBeenCalledTimes(1);
-    expect(api.createAgentScratch).toHaveBeenCalledTimes(1);
+    expect(api.createAgentScratch).not.toHaveBeenCalled();
   });
 
   it('loads config after authentication and applies terminal grid limits', async () => {

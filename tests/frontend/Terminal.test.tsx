@@ -205,12 +205,13 @@ describe('Terminal', () => {
       { wrapper },
     );
 
+    mocks.wsOptions?.onOpen?.();
     mocks.send.mockClear();
     act(() => {
       mocks.resizeObserverCallback?.();
     });
 
-    expect(mocks.fitCalls).toBe(2);
+    expect(mocks.fitCalls).toBe(3);
     expect(mocks.send).toHaveBeenCalledWith({ type: 'resize', cols: 132, rows: 37 });
   });
 
@@ -227,14 +228,37 @@ describe('Terminal', () => {
     const { rerender } = render(<Terminal {...props} fontSize={14} />, { wrapper });
 
     expect(mocks.fitCalls).toBe(1);
+    mocks.wsOptions?.onOpen?.();
 
     rerender(<Terminal {...props} fontSize={14} />);
-    expect(mocks.fitCalls).toBe(1);
+    expect(mocks.fitCalls).toBe(2);
 
     mocks.send.mockClear();
     rerender(<Terminal {...props} fontSize={16} />);
 
+    expect(mocks.fitCalls).toBe(3);
+    expect(mocks.send).toHaveBeenCalledWith({ type: 'resize', cols: 132, rows: 37 });
+  });
+
+  it('refits when the external fit trigger changes', () => {
+    const props = {
+      sessionId: 'session-1',
+      fontSize: 14,
+      state: 'connected' as const,
+      autoScroll: true,
+      onStateChange: vi.fn(),
+      onViewerUpdate: vi.fn(),
+      onFocusGained: vi.fn(),
+    };
+
+    const { rerender } = render(<Terminal {...props} fitTrigger="codex-a" />, { wrapper });
+    mocks.wsOptions?.onOpen?.();
     expect(mocks.fitCalls).toBe(2);
+
+    mocks.send.mockClear();
+    rerender(<Terminal {...props} fitTrigger="codex-b" />);
+
+    expect(mocks.fitCalls).toBe(3);
     expect(mocks.send).toHaveBeenCalledWith({ type: 'resize', cols: 132, rows: 37 });
   });
 });

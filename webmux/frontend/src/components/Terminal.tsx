@@ -48,6 +48,7 @@ interface TerminalProps {
   onFocusGained: () => void;
   theme?: TerminalTheme | null;
   onBell?: () => void;
+  fitTrigger?: unknown;
 }
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal({
@@ -60,6 +61,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   onFocusGained,
   theme,
   onBell,
+  fitTrigger,
 }: TerminalProps, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
@@ -67,8 +69,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const wsHandleRef = useRef<ReturnType<typeof useWebSocket> | null>(null);
   const socketOpenRef = useRef(false);
+  const resizeSentDuringFitRef = useRef(false);
   const userScrolledRef = useRef(false);
   const autoScrollRef = useRef(autoScroll);
+  const didMountFitTriggerRef = useRef(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchIndex, setSearchIndex] = useState(-1);
@@ -113,6 +117,39 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     wsHandleRef.current?.send({ type: 'resize', cols: term.cols, rows: term.rows });
   }, []);
 
+  const fitTerminal = useCallback(() => {
+    const term = termRef.current;
+    const fitAddon = fitAddonRef.current;
+    const container = containerRef.current;
+    if (!term || !fitAddon || !container || container.offsetWidth <= 0 || container.offsetHeight <= 0) return;
+
+    const beforeCols = term.cols;
+    const beforeRows = term.rows;
+    resizeSentDuringFitRef.current = false;
+    fitAddon.fit();
+    term.refresh(0, term.rows - 1);
+    if (socketOpenRef.current && term.cols === beforeCols && term.rows === beforeRows && !resizeSentDuringFitRef.current) {
+      sendCurrentSize();
+    }
+  }, [sendCurrentSize]);
+
+  const scheduleFit = useCallback(() => {
+    fitTerminal();
+    const raf = window.requestAnimationFrame ?? ((callback: FrameRequestCallback) => window.setTimeout(callback, 0));
+    const cancelRaf = window.cancelAnimationFrame ?? ((handle: number) => window.clearTimeout(handle));
+    let second: number | undefined;
+    const first = raf(() => {
+      fitTerminal();
+      second = raf(() => fitTerminal());
+    });
+    const timeout = window.setTimeout(() => fitTerminal(), 100);
+    return () => {
+      cancelRaf(first);
+      if (second !== undefined) cancelRaf(second);
+      window.clearTimeout(timeout);
+    };
+  }, [fitTerminal]);
+
   const handleMessage = useCallback((msg: WebSocketMessage) => {
     switch (msg.type) {
       case 'output':
@@ -151,7 +188,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     onOpen: () => {
       socketOpenRef.current = true;
       onStateChangeRef.current('connected');
-      sendCurrentSize();
+      fitTerminal();
     },
     onClose: () => {
       socketOpenRef.current = false;
@@ -198,18 +235,20 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     term.loadAddon(webLinksAddon);
     term.loadAddon(searchAddon);
 
-    term.open(containerRef.current);
-    fitAddon.fit();
-
     termRef.current = term;
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
-    if (socketOpenRef.current) {
-      sendCurrentSize();
-    }
+
     const resizeListener = term.onResize(({ cols, rows }: { cols: number; rows: number }) => {
-      wsHandleRef.current?.send({ type: 'resize', cols, rows });
+      if (socketOpenRef.current) {
+        resizeSentDuringFitRef.current = true;
+        wsHandleRef.current?.send({ type: 'resize', cols, rows });
+      }
     });
+
+    term.open(containerRef.current);
+    const cancelInitialFit = scheduleFit();
+
     searchAddon.onDidChangeResults(({ resultIndex, resultCount }) => {
       setSearchIndex(resultIndex);
       setSearchCount(resultCount);
@@ -259,6 +298,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     el.addEventListener('mousedown', clickHandler);
 
     return () => {
+      cancelInitialFit();
       dataListener.dispose();
       resizeListener.dispose();
       bellListener.dispose();
@@ -276,9 +316,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   useEffect(() => {
     if (termRef.current && termRef.current.options.fontSize !== fontSize) {
       termRef.current.options.fontSize = fontSize;
-      fitAddonRef.current?.fit();
+      scheduleFit();
     }
-  }, [fontSize]);
+  }, [fontSize, scheduleFit]);
 
   // Apply theme changes without tearing down the terminal (preserves scrollback).
   useEffect(() => {
@@ -305,14 +345,18 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     }
   }, [autoScroll]);
 
+  useEffect(() => {
+    if (!didMountFitTriggerRef.current) {
+      didMountFitTriggerRef.current = true;
+      return;
+    }
+    return scheduleFit();
+  }, [fitTrigger, scheduleFit]);
+
   // Refit on container resize (skip if container is hidden/off-screen)
   useEffect(() => {
     const observer = new ResizeObserver(() => {
-      if (containerRef.current && containerRef.current.offsetWidth > 0 && containerRef.current.offsetHeight > 0) {
-        fitAddonRef.current?.fit();
-        // Force re-render of buffer after restoring from minimized
-        termRef.current?.refresh(0, termRef.current.rows - 1);
-      }
+      scheduleFit();
     });
     if (containerRef.current) {
       observer.observe(containerRef.current);

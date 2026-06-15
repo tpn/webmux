@@ -30,11 +30,12 @@ interface TerminalPanelProps {
   fontSize: number;
   theme?: NamedTheme;
   agent: AgentConfig;
+  fitTrigger: string;
   onClose?: () => void;
   closeTitle?: string;
 }
 
-function TerminalPanel({ session, fontSize, theme, agent, onClose, closeTitle }: TerminalPanelProps) {
+function TerminalPanel({ session, fontSize, theme, agent, fitTrigger, onClose, closeTitle }: TerminalPanelProps) {
   const [state, setState] = useState<ConnectionState>(session.state);
   const role = session.agent_role ?? session.codex_role;
 
@@ -67,6 +68,7 @@ function TerminalPanel({ session, fontSize, theme, agent, onClose, closeTitle }:
           onViewerUpdate={() => {}}
           onFocusGained={() => {}}
           theme={theme?.theme}
+          fitTrigger={fitTrigger}
         />
       </div>
     </div>
@@ -85,7 +87,6 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
   const [scratchLoading, setScratchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const attachRequestRef = useRef(0);
-  const autoScratchRequestedRef = useRef(false);
 
   const activeTheme = themes.find(theme => theme.name === globalTheme);
 
@@ -160,6 +161,7 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
 
   const openScratch = useCallback(async () => {
     if (scratchLoading) return;
+    setScratchVisible(true);
     setScratchLoading(true);
     setError(null);
     try {
@@ -169,9 +171,10 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
         rows: termRows,
       });
       setScratchSession(session);
-      setScratchVisible(true);
     } catch (err) {
       setError((err as Error).message);
+      setScratchSession(null);
+      setScratchVisible(false);
     } finally {
       setScratchLoading(false);
     }
@@ -192,14 +195,8 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
   }, [scratchSession]);
 
   const showScratch = scratchVisible && scratchSession;
-
-  useEffect(() => {
-    if (loading || error || autoScratchRequestedRef.current) return;
-    autoScratchRequestedRef.current = true;
-    if (!scratchLoading && !showScratch) {
-      void openScratch();
-    }
-  }, [error, loading, openScratch, scratchLoading, showScratch]);
+  const reserveScratch = scratchVisible || scratchLoading;
+  const layoutFitTrigger = `${agentKind}:${selectedName ?? ''}:${showScratch ? 'split' : 'single'}`;
 
   return (
     <div style={styles.shell}>
@@ -232,8 +229,8 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
         <button
           style={styles.stripButton}
           onClick={openScratch}
-          disabled={scratchLoading || Boolean(showScratch)}
-          title={showScratch ? 'Scratch shell open' : 'Open scratch shell'}
+          disabled={scratchLoading || scratchVisible}
+          title={showScratch ? 'Scratch shell open' : scratchVisible ? 'Scratch shell opening' : 'Open scratch shell'}
         >
           + Shell
         </button>
@@ -245,11 +242,17 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
         data-testid={agent.layoutTestId}
         style={{
           ...styles.layout,
-          gridTemplateColumns: showScratch ? 'minmax(0, 2fr) minmax(0, 1fr)' : 'minmax(0, 1fr)',
+          gridTemplateColumns: reserveScratch ? 'minmax(0, 2fr) minmax(0, 1fr)' : 'minmax(0, 1fr)',
         }}
       >
         {attachedSession ? (
-          <TerminalPanel session={attachedSession} fontSize={fontSize} theme={activeTheme} agent={agent} />
+          <TerminalPanel
+            session={attachedSession}
+            fontSize={fontSize}
+            theme={activeTheme}
+            agent={agent}
+            fitTrigger={`${layoutFitTrigger}:attach:${attachedSession.agent_session_name ?? attachedSession.codex_session_name ?? attachedSession.title}:${attachedSession.updated_at}`}
+          />
         ) : (
           <div style={styles.emptyPanel}>{attachLoading ? 'Connecting...' : 'No session selected'}</div>
         )}
@@ -259,9 +262,13 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
             fontSize={fontSize}
             theme={activeTheme}
             agent={agent}
+            fitTrigger={`${layoutFitTrigger}:scratch:${scratchSession.id}:${scratchSession.updated_at}`}
             onClose={closeScratch}
             closeTitle="Close scratch shell"
           />
+        )}
+        {!showScratch && scratchVisible && (
+          <div style={styles.emptyPanel}>{loading || scratchLoading ? 'Opening scratch shell...' : 'Scratch shell unavailable'}</div>
         )}
       </div>
     </div>
@@ -331,7 +338,10 @@ const styles: Record<string, React.CSSProperties> = {
   layout: {
     display: 'grid',
     gap: 8,
+    gridTemplateRows: 'minmax(0, 1fr)',
+    alignItems: 'stretch',
     minHeight: 0,
+    height: '100%',
     flex: 1,
     padding: 8,
   },
@@ -340,6 +350,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     minWidth: 0,
     minHeight: 0,
+    height: '100%',
     border: '2px solid #333366',
     borderRadius: 6,
     overflow: 'hidden',

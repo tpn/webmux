@@ -89,10 +89,8 @@ describe('CodexWorkspace', () => {
       expect(apiMock.attachAgentSession).toHaveBeenCalledWith('codex', { name: 'codex-a', cols: 120, rows: 40 });
     });
     expect(await screen.findByTestId('terminal-codex-session-1')).toBeDefined();
-    await waitFor(() => {
-      expect(apiMock.createAgentScratch).toHaveBeenCalledWith('codex', { selectedName: 'codex-a', cols: 60, rows: 40 });
-    });
-    expect(await screen.findByTestId('terminal-codex-scratch-1')).toBeDefined();
+    expect(screen.getByTestId('codex-layout')).toHaveStyle('grid-template-columns: minmax(0, 1fr)');
+    expect(apiMock.createAgentScratch).not.toHaveBeenCalled();
   });
 
   it('clicking a codex button requests attach for that session', async () => {
@@ -116,10 +114,14 @@ describe('CodexWorkspace', () => {
     expect(screen.getAllByText('codex-b').length).toBeGreaterThan(1);
   });
 
-  it('opens a scratch shell by default and can close and reopen it', async () => {
+  it('opens a scratch shell on demand and can close and reopen it', async () => {
     render(<CodexWorkspace {...defaultProps} />);
 
     await screen.findByTestId('terminal-codex-session-1');
+    expect(screen.getByTestId('codex-layout')).toHaveStyle('grid-template-columns: minmax(0, 1fr)');
+    expect(apiMock.createAgentScratch).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('+ Shell'));
 
     await waitFor(() => {
       expect(apiMock.createAgentScratch).toHaveBeenCalledWith('codex', { selectedName: 'codex-a', cols: 60, rows: 40 });
@@ -142,14 +144,15 @@ describe('CodexWorkspace', () => {
     expect(screen.getByTestId('codex-layout')).toHaveStyle('grid-template-columns: minmax(0, 2fr) minmax(0, 1fr)');
   });
 
-  it('does not auto-reopen a scratch shell that was opened manually while sessions were loading', async () => {
+  it('does not create or reserve a scratch shell while sessions load', async () => {
     const sessions = deferred<{ name: string; windows: number; attached: number }[]>();
     apiMock.getAgentSessions.mockReturnValue(sessions.promise);
 
     render(<CodexWorkspace {...defaultProps} />);
 
-    fireEvent.click(screen.getByText('+ Shell'));
-    expect(await screen.findByTestId('terminal-codex-scratch-1')).toBeDefined();
+    expect(screen.getByTestId('codex-layout')).toHaveStyle('grid-template-columns: minmax(0, 1fr)');
+    expect(screen.getByRole('button', { name: '+ Shell' })).toBeEnabled();
+    expect(apiMock.createAgentScratch).not.toHaveBeenCalled();
 
     await act(async () => {
       sessions.resolve([{ name: 'codex-a', windows: 1, attached: 0 }]);
@@ -157,14 +160,9 @@ describe('CodexWorkspace', () => {
     await waitFor(() => {
       expect(apiMock.attachAgentSession).toHaveBeenCalledWith('codex', { name: 'codex-a', cols: 120, rows: 40 });
     });
-
-    fireEvent.click(screen.getByTitle('Close scratch shell'));
-    await waitFor(() => {
-      expect(apiMock.deleteSession).toHaveBeenCalledWith('codex-scratch-1');
-    });
     await act(async () => {});
 
-    expect(apiMock.createAgentScratch).toHaveBeenCalledTimes(1);
+    expect(apiMock.createAgentScratch).not.toHaveBeenCalled();
   });
 
   it('auto-selects a Claude session through the same workspace', async () => {
@@ -195,6 +193,10 @@ describe('CodexWorkspace', () => {
 
     expect(await screen.findByText('No Copilot sessions')).toBeDefined();
     expect(apiMock.attachAgentSession).not.toHaveBeenCalled();
+    expect(apiMock.createAgentScratch).not.toHaveBeenCalled();
+    expect(screen.getByTestId('copilot-layout')).toHaveStyle('grid-template-columns: minmax(0, 1fr)');
+
+    fireEvent.click(screen.getByText('+ Shell'));
 
     await waitFor(() => {
       expect(apiMock.createAgentScratch).toHaveBeenCalledWith('copilot', { selectedName: undefined, cols: 60, rows: 40 });
