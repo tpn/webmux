@@ -15,6 +15,7 @@ jest.mock('child_process', () => ({
 describe('Codex API Routes', () => {
   let tmpDir: string;
   let originalHome: string | undefined;
+  let originalShell: string | undefined;
   let app: express.Express;
   let sessionBroker: any;
   let transportLauncher: any;
@@ -22,7 +23,9 @@ describe('Codex API Routes', () => {
   beforeEach(async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'webmux-codex-'));
     originalHome = process.env.WEBMUX_HOME;
+    originalShell = process.env.SHELL;
     process.env.WEBMUX_HOME = tmpDir;
+    process.env.SHELL = '/bin/test-shell';
 
     const configDir = path.join(tmpDir, 'config');
     fs.mkdirSync(configDir, { recursive: true });
@@ -77,6 +80,11 @@ describe('Codex API Routes', () => {
       delete process.env.WEBMUX_HOME;
     } else {
       process.env.WEBMUX_HOME = originalHome;
+    }
+    if (originalShell === undefined) {
+      delete process.env.SHELL;
+    } else {
+      process.env.SHELL = originalShell;
     }
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -171,8 +179,18 @@ describe('Codex API Routes', () => {
     expect(second.body.agent_role).toBe('scratch');
     expect(second.body.codex_role).toBe('scratch');
     expect(second.body.persistent).toBe(false);
-    expect(second.body.exec_argv).toEqual(['/bin/zsh', '-l']);
+    expect(second.body.exec_argv).toEqual(['/bin/test-shell', '-l']);
     expect(second.body.exec_cwd).toBe(tmpDir);
+  });
+
+  it('falls back to /bin/sh for scratch shells when SHELL is unset', async () => {
+    mockTmuxList('codex-a\t1\t0\n');
+    delete process.env.SHELL;
+
+    const res = await request(app).post('/api/codex/scratch').send({ selectedName: 'codex-a' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.exec_argv).toEqual(['/bin/sh', '-l']);
   });
 
   it('lists Claude sessions through the generic agent API', async () => {
@@ -224,6 +242,6 @@ describe('Codex API Routes', () => {
     expect(second.body.agent_kind).toBe('copilot');
     expect(second.body.agent_role).toBe('scratch');
     expect(second.body.persistent).toBe(false);
-    expect(second.body.exec_argv).toEqual(['/bin/zsh', '-l']);
+    expect(second.body.exec_argv).toEqual(['/bin/test-shell', '-l']);
   });
 });

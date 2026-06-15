@@ -374,7 +374,8 @@ export class SessionBroker extends EventEmitter {
     rows: number,
     cwd?: string,
   ): Promise<{ session: Session; created: boolean }> {
-    const execArgv = ['/bin/zsh', '-l'];
+    const shell = process.env.SHELL?.trim() || '/bin/sh';
+    const execArgv = [shell, '-l'];
     const existing = this.findAgentScratch(owner, kind);
     if (existing) {
       existing.cols = cols;
