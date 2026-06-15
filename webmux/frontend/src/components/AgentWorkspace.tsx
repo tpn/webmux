@@ -123,12 +123,7 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
     try {
       const session = await api.attachAgentSession(agentKind, { name, cols: termCols, rows: termRows });
       if (attachRequestRef.current === requestId) {
-        setAttachedSession(current => {
-          if (current && current.id !== session.id) {
-            deleteAgentSession(current.id);
-          }
-          return session;
-        });
+        setAttachedSession(session);
       }
     } catch (err) {
       if (attachRequestRef.current === requestId) {
@@ -146,7 +141,7 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
         setAttachLoading(false);
       }
     }
-  }, [agentKind, deleteAgentSession, loadSessions, termCols, termRows]);
+  }, [agentKind, loadSessions, termCols, termRows]);
 
   useEffect(() => {
     if (selectedName) {

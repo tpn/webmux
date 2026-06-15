@@ -316,8 +316,12 @@ export class SessionBroker extends EventEmitter {
     });
   }
 
-  findAgentAttach(owner: string, kind: AgentKind, name: string): Session | undefined {
-    return this.listAgentByOwner(owner, kind).find(s => agentRole(s) === 'attach' && agentSessionName(s) === name);
+  findAgentAttach(owner: string, kind: AgentKind, name?: string): Session | undefined {
+    const attachSessions = this.listAgentByOwner(owner, kind).filter(s => agentRole(s) === 'attach');
+    if (name) {
+      return attachSessions.find(s => agentSessionName(s) === name) ?? attachSessions[0];
+    }
+    return attachSessions[0];
   }
 
   findAgentScratch(owner: string, kind: AgentKind): Session | undefined {
@@ -333,10 +337,18 @@ export class SessionBroker extends EventEmitter {
     rows: number,
     execArgv: string[],
   ): Promise<{ session: Session; created: boolean }> {
-    const existing = this.findAgentAttach(owner, kind, name);
+    const attachSessions = this.listAgentByOwner(owner, kind).filter(s => agentRole(s) === 'attach');
+    const existing = attachSessions.find(s => agentSessionName(s) === name) ?? attachSessions[0];
     if (existing) {
+      const shouldRelaunch = agentSessionName(existing) !== name;
+      for (const stale of attachSessions) {
+        if (stale.id !== existing.id) {
+          await this.delete(stale.id);
+        }
+      }
       existing.cols = cols;
       existing.rows = rows;
+      existing.title = name;
       existing.exec_argv = execArgv;
       existing.agent_kind = kind;
       existing.agent_role = 'attach';
@@ -346,7 +358,7 @@ export class SessionBroker extends EventEmitter {
         existing.codex_session_name = name;
       }
       existing.updated_at = new Date().toISOString();
-      if (!transportLauncher.isAlive(existing.id) || existing.state === 'disconnected' || existing.state === 'error') {
+      if (shouldRelaunch || !transportLauncher.isAlive(existing.id) || existing.state === 'disconnected' || existing.state === 'error') {
         this.relaunch(existing);
       } else {
         transportLauncher.resize(existing.id, cols, rows);

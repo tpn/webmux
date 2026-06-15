@@ -136,11 +136,11 @@ describe('Codex API Routes', () => {
     expect(res.status).toBe(404);
   });
 
-  it('creates and reuses one codex attach session per tmux name', async () => {
-    mockTmuxList('codex-a\t1\t0\n');
+  it('reuses one codex attach session when switching tmux names', async () => {
+    mockTmuxList('codex-a\t1\t0\ncodex-b\t1\t0\n');
 
     const first = await request(app).post('/api/codex/attach').send({ name: 'codex-a', cols: 120, rows: 40 });
-    const second = await request(app).post('/api/codex/attach').send({ name: 'codex-a', cols: 120, rows: 40 });
+    const second = await request(app).post('/api/codex/attach').send({ name: 'codex-b', cols: 120, rows: 40 });
 
     expect(first.status).toBe(201);
     expect(second.status).toBe(200);
@@ -148,11 +148,11 @@ describe('Codex API Routes', () => {
     expect(second.body.workspace).toBe('codexes');
     expect(second.body.agent_kind).toBe('codex');
     expect(second.body.agent_role).toBe('attach');
-    expect(second.body.agent_session_name).toBe('codex-a');
+    expect(second.body.agent_session_name).toBe('codex-b');
     expect(second.body.codex_role).toBe('attach');
-    expect(second.body.codex_session_name).toBe('codex-a');
+    expect(second.body.codex_session_name).toBe('codex-b');
     expect(second.body.persistent).toBe(false);
-    expect(second.body.exec_argv).toEqual(['tmux', '-L', 'codex', 'attach-session', '-t', 'codex-a']);
+    expect(second.body.exec_argv).toEqual(['tmux', '-L', 'codex', 'attach-session', '-t', 'codex-b']);
   });
 
   it('excludes codex sessions from normal /api/sessions', async () => {
