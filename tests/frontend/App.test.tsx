@@ -33,6 +33,9 @@ vi.mock('@frontend/utils/api', () => ({
     getKeys: vi.fn().mockResolvedValue([]),
     getAuthStatus: vi.fn().mockResolvedValue({ mode: 'none', bootstrap_required: false }),
     updateConfig: vi.fn().mockResolvedValue({}),
+    getAgentSessions: vi.fn().mockResolvedValue([]),
+    attachAgentSession: vi.fn(),
+    createAgentScratch: vi.fn(),
   },
 }));
 

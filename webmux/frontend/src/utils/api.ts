@@ -1,4 +1,4 @@
-import type { Session, HostEntry, KeyEntry, AuthStatus, AppConfig, DeepPartial, CreateSessionRequest, VncSession, CreateVncSessionRequest, RdpSession, CreateRdpSessionRequest } from '../types';
+import type { Session, HostEntry, KeyEntry, AuthStatus, AppConfig, DeepPartial, CreateSessionRequest, VncSession, CreateVncSessionRequest, RdpSession, CreateRdpSessionRequest, AgentKind, AgentTmuxSession, CodexTmuxSession } from '../types';
 
 const API_BASE = '/api';
 
@@ -140,6 +140,18 @@ export const api = {
   getConfig: () => request<AppConfig>('/config'),
   updateConfig: (config: DeepPartial<AppConfig>) =>
     request<AppConfig>('/config', { method: 'PUT', body: JSON.stringify(config) }),
+
+  // Agent sessions
+  getAgentSessions: (kind: AgentKind) => request<AgentTmuxSession[]>(`/agents/${kind}/sessions`),
+  attachAgentSession: (kind: AgentKind, req: { name: string; cols: number; rows: number }) =>
+    request<Session>(`/agents/${kind}/attach`, { method: 'POST', body: JSON.stringify(req) }),
+  createAgentScratch: (kind: AgentKind, req: { selectedName?: string; cols: number; rows: number }) =>
+    request<Session>(`/agents/${kind}/scratch`, { method: 'POST', body: JSON.stringify(req) }),
+  getCodexSessions: () => request<CodexTmuxSession[]>('/codex/sessions'),
+  attachCodexSession: (req: { name: string; cols: number; rows: number }) =>
+    request<Session>('/codex/attach', { method: 'POST', body: JSON.stringify(req) }),
+  createCodexScratch: (req: { selectedName?: string; cols: number; rows: number }) =>
+    request<Session>('/codex/scratch', { method: 'POST', body: JSON.stringify(req) }),
 };
 
 export function buildWsUrl(sessionId: string): string {

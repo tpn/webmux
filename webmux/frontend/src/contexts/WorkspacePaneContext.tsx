@@ -1,7 +1,7 @@
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 
-export type WorkspacePane = 'terminals' | 'desktops';
+export type WorkspacePane = 'terminals' | 'desktops' | 'codexes' | 'claudes' | 'copilots';
 
 interface WorkspacePaneContextValue {
   activePane: WorkspacePane;

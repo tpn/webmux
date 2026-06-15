@@ -68,6 +68,15 @@ describe('TopBar', () => {
     expect(screen.getByText('Type to All')).toBeDefined();
   });
 
+  it('shows agent panes as top-level pane options', () => {
+    render(<TopBar {...defaultTopBarProps()} />, { wrapper });
+    expect(screen.getByText('Terminals')).toBeDefined();
+    expect(screen.getByText('Desktops')).toBeDefined();
+    expect(screen.getByText('Codexes')).toBeDefined();
+    expect(screen.getByText('Claudes')).toBeDefined();
+    expect(screen.getByText('Copilots')).toBeDefined();
+  });
+
   it('toggles Type to All button on click', () => {
     render(<TopBar {...defaultTopBarProps()} />, { wrapper });
     fireEvent.click(screen.getByText('Type to All'));

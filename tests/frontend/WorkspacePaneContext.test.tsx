@@ -9,6 +9,9 @@ function TestConsumer() {
       <span data-testid="pane">{activePane}</span>
       <button onClick={() => setActivePane('desktops')}>go desktops</button>
       <button onClick={() => setActivePane('terminals')}>go terminals</button>
+      <button onClick={() => setActivePane('codexes')}>go codexes</button>
+      <button onClick={() => setActivePane('claudes')}>go claudes</button>
+      <button onClick={() => setActivePane('copilots')}>go copilots</button>
     </div>
   );
 }
@@ -53,5 +56,27 @@ describe('WorkspacePaneContext', () => {
     );
     // Initial render reflects provider default
     expect(screen.getByTestId('pane').textContent).toBe('terminals');
+  });
+
+  it('updates activePane to codexes after setActivePane("codexes")', () => {
+    render(
+      <WorkspacePaneProvider>
+        <TestConsumer />
+      </WorkspacePaneProvider>,
+    );
+    fireEvent.click(screen.getByText('go codexes'));
+    expect(screen.getByTestId('pane').textContent).toBe('codexes');
+  });
+
+  it('updates activePane to agent panes', () => {
+    render(
+      <WorkspacePaneProvider>
+        <TestConsumer />
+      </WorkspacePaneProvider>,
+    );
+    fireEvent.click(screen.getByText('go claudes'));
+    expect(screen.getByTestId('pane').textContent).toBe('claudes');
+    fireEvent.click(screen.getByText('go copilots'));
+    expect(screen.getByTestId('pane').textContent).toBe('copilots');
   });
 });

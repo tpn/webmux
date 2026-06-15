@@ -1,6 +1,11 @@
 export type TransportType = 'ssh' | 'mosh' | 'exec';
 export type SessionKind = 'terminal' | 'vnc' | 'rdp';
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
+export type AgentKind = 'codex' | 'claude' | 'copilot';
+export type AgentWorkspaceName = 'codexes' | 'claudes' | 'copilots';
+export type WorkspaceName = 'terminals' | AgentWorkspaceName;
+export type AgentSessionRole = 'attach' | 'scratch';
+export type CodexSessionRole = AgentSessionRole;
 
 export interface Session {
   id: string;
@@ -12,6 +17,8 @@ export interface Session {
   username: string;
   key_id: string;
   exec_command?: string;
+  exec_argv?: string[];
+  exec_cwd?: string;
   cols: number;
   rows: number;
   row: number;
@@ -22,6 +29,12 @@ export interface Session {
   title: string;
   persistent: boolean;
   minimized: boolean;
+  workspace?: WorkspaceName;
+  agent_kind?: AgentKind;
+  agent_role?: AgentSessionRole;
+  agent_session_name?: string;
+  codex_role?: CodexSessionRole;
+  codex_session_name?: string;
 }
 
 export interface TerminalTheme {
@@ -97,11 +110,29 @@ export interface CreateSessionRequest {
   // For exec transport: command template with {host}, {port}, {user} substitutions.
   // Falls back to WEBMUX_EXEC_COMMAND env var on the server if not set.
   exec_command?: string;
+  exec_argv?: string[];
+  exec_cwd?: string;
   cols?: number;
   rows?: number;
   row?: number;
   col?: number;
+  title?: string;
+  persistent?: boolean;
+  workspace?: WorkspaceName;
+  agent_kind?: AgentKind;
+  agent_role?: AgentSessionRole;
+  agent_session_name?: string;
+  codex_role?: CodexSessionRole;
+  codex_session_name?: string;
 }
+
+export interface AgentTmuxSession {
+  name: string;
+  windows: number;
+  attached: number;
+}
+
+export type CodexTmuxSession = AgentTmuxSession;
 
 export interface KeyEntry {
   id: string;

@@ -107,6 +107,48 @@ export function TopBar({
           Desktops
         </button>
         <button
+          onClick={() => setActivePane('codexes')}
+          style={{
+            background: activePane === 'codexes' ? '#4aaa6a' : '#1a1a3a',
+            color: '#fff',
+            border: '1px solid #333366',
+            borderRadius: 4,
+            padding: '4px 12px',
+            cursor: 'pointer',
+            fontSize: 13,
+          }}
+        >
+          Codexes
+        </button>
+        <button
+          onClick={() => setActivePane('claudes')}
+          style={{
+            background: activePane === 'claudes' ? '#c27a45' : '#1a1a3a',
+            color: '#fff',
+            border: '1px solid #333366',
+            borderRadius: 4,
+            padding: '4px 12px',
+            cursor: 'pointer',
+            fontSize: 13,
+          }}
+        >
+          Claudes
+        </button>
+        <button
+          onClick={() => setActivePane('copilots')}
+          style={{
+            background: activePane === 'copilots' ? '#4a8fba' : '#1a1a3a',
+            color: '#fff',
+            border: '1px solid #333366',
+            borderRadius: 4,
+            padding: '4px 12px',
+            cursor: 'pointer',
+            fontSize: 13,
+          }}
+        >
+          Copilots
+        </button>
+        <button
           style={{
             ...styles.broadcastBtn,
             background: globalAutoScroll ? '#1a3a2a' : '#1a1a3a',

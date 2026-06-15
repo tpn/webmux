@@ -5,6 +5,8 @@ import { LoginPage } from './components/LoginPage';
 import { TopBar } from './components/TopBar';
 import { Workspace } from './components/Workspace';
 import { GraphicsWorkspace } from './components/GraphicsWorkspace';
+import { CodexWorkspace } from './components/CodexWorkspace';
+import { AgentWorkspace } from './components/AgentWorkspace';
 import { RegisterDialog } from './components/RegisterDialog';
 import { InputBroadcastProvider } from './contexts/InputBroadcastContext';
 import { WorkspacePaneProvider, useWorkspacePane } from './contexts/WorkspacePaneContext';
@@ -111,6 +113,41 @@ function AuthenticatedApp({
         <div style={{ display: activePane === 'desktops' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
           <GraphicsWorkspace />
         </div>
+        {activePane === 'codexes' && (
+          <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
+            <CodexWorkspace
+              fontSize={fontSize}
+              termCols={termCols}
+              termRows={termRows}
+              themes={themes}
+              globalTheme={globalTheme}
+            />
+          </div>
+        )}
+        {activePane === 'claudes' && (
+          <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
+            <AgentWorkspace
+              agentKind="claude"
+              fontSize={fontSize}
+              termCols={termCols}
+              termRows={termRows}
+              themes={themes}
+              globalTheme={globalTheme}
+            />
+          </div>
+        )}
+        {activePane === 'copilots' && (
+          <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
+            <AgentWorkspace
+              agentKind="copilot"
+              fontSize={fontSize}
+              termCols={termCols}
+              termRows={termRows}
+              themes={themes}
+              globalTheme={globalTheme}
+            />
+          </div>
+        )}
       </div>
 
       {showRegister && (
