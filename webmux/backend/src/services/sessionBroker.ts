@@ -45,6 +45,7 @@ interface InternalCreateSessionOptions {
 export class SessionBroker extends EventEmitter {
   private sessions = new Map<string, Session>();
   private scrollback = new Map<string, string>();
+  private launchGenerations = new Map<string, number>();
   private static readonly SCROLLBACK_SIZE = 64 * 1024;
 
   constructor() {
@@ -67,8 +68,9 @@ export class SessionBroker extends EventEmitter {
           session.state = 'connecting';
           session.updated_at = new Date().toISOString();
           this.scrollback.delete(session.id);
+          const generation = this.bumpLaunchGeneration(session.id);
           const ptyProcess = transportLauncher.launch(session, undefined, session.key_id || undefined);
-          this.wireEvents(session, ptyProcess);
+          this.wireEvents(session, ptyProcess, undefined, generation);
           console.log(`  reconnected: ${session.title} (${session.id})`);
         } catch (err) {
           session.state = 'error';
@@ -87,6 +89,7 @@ export class SessionBroker extends EventEmitter {
         session.state = 'disconnected';
         session.updated_at = new Date().toISOString();
       }
+      this.bumpLaunchGeneration(session.id);
       transportLauncher.kill(session.id);
     }
     this.persistSessions();
@@ -171,6 +174,7 @@ export class SessionBroker extends EventEmitter {
 
     // Launch the PTY process (state stays 'connecting' until first data arrives)
     try {
+      const generation = this.bumpLaunchGeneration(session.id);
       const ptyProcess = transportLauncher.launch(session, req.password, req.key_id);
       // Resolve initial command: explicit > template lookup
       let initialCmd = req.initial_cmd;
@@ -180,7 +184,7 @@ export class SessionBroker extends EventEmitter {
         const tpl = TEMPLATES.find(t => t.id === req.template_id);
         if (tpl?.initialCmd) initialCmd = tpl.initialCmd;
       }
-      this.wireEvents(session, ptyProcess, initialCmd);
+      this.wireEvents(session, ptyProcess, initialCmd, generation);
     } catch (err) {
       session.state = 'error';
       session.updated_at = new Date().toISOString();
@@ -193,11 +197,22 @@ export class SessionBroker extends EventEmitter {
     return session;
   }
 
-  private wireEvents(session: Session, ptyProcess: pty.IPty, initialCmd?: string): void {
+  private bumpLaunchGeneration(sessionId: string): number {
+    const next = (this.launchGenerations.get(sessionId) ?? 0) + 1;
+    this.launchGenerations.set(sessionId, next);
+    return next;
+  }
+
+  private isCurrentLaunch(sessionId: string, generation: number): boolean {
+    return this.launchGenerations.get(sessionId) === generation && this.sessions.has(sessionId);
+  }
+
+  private wireEvents(session: Session, ptyProcess: pty.IPty, initialCmd: string | undefined, generation: number): void {
     let firstData = true;
     let cmdInjected = false;
 
     ptyProcess.onData((data: string) => {
+      if (!this.isCurrentLaunch(session.id, generation)) return;
       if (firstData) {
         firstData = false;
         session.state = 'connected';
@@ -206,6 +221,7 @@ export class SessionBroker extends EventEmitter {
         if (initialCmd && !cmdInjected) {
           cmdInjected = true;
           setTimeout(() => {
+            if (!this.isCurrentLaunch(session.id, generation)) return;
             try { ptyProcess.write(`${initialCmd}\r`); }
             catch { /* session may have closed */ }
           }, 800);
@@ -239,6 +255,7 @@ export class SessionBroker extends EventEmitter {
     });
 
     ptyProcess.onExit(({ exitCode }: { exitCode: number }) => {
+      if (!this.isCurrentLaunch(session.id, generation)) return;
       session.state = 'disconnected';
       session.updated_at = new Date().toISOString();
       presenceService.broadcastToSession(session.id, {
@@ -257,6 +274,7 @@ export class SessionBroker extends EventEmitter {
     if (!session) throw new Error(`Session ${sessionId} not found`);
 
     if (transportLauncher.isAlive(sessionId)) {
+      this.bumpLaunchGeneration(sessionId);
       transportLauncher.kill(sessionId);
     }
 
@@ -265,8 +283,9 @@ export class SessionBroker extends EventEmitter {
 
     try {
       this.scrollback.delete(session.id);
+      const generation = this.bumpLaunchGeneration(session.id);
       const ptyProcess = transportLauncher.launch(session, password, session.key_id || undefined);
-      this.wireEvents(session, ptyProcess);
+      this.wireEvents(session, ptyProcess, undefined, generation);
     } catch (err) {
       session.state = 'error';
       session.updated_at = new Date().toISOString();
@@ -284,10 +303,13 @@ export class SessionBroker extends EventEmitter {
   async delete(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     const owner = session?.owner;
+    const wasAgentWorkspace = isAgentWorkspace(session?.workspace);
+    this.bumpLaunchGeneration(sessionId);
     transportLauncher.kill(sessionId);
     this.sessions.delete(sessionId);
+    this.launchGenerations.delete(sessionId);
     this.scrollback.delete(sessionId);
-    if (owner) {
+    if (owner && !wasAgentWorkspace) {
       const ownerSessions = Array.from(this.sessions.values()).filter(s => s.owner === owner && !isAgentWorkspace(s.workspace));
       compactPositions(ownerSessions);
     }
@@ -477,13 +499,14 @@ export class SessionBroker extends EventEmitter {
   }
 
   private relaunch(session: Session): void {
+    const generation = this.bumpLaunchGeneration(session.id);
     transportLauncher.kill(session.id);
     session.state = 'connecting';
     session.updated_at = new Date().toISOString();
     this.scrollback.delete(session.id);
     try {
       const ptyProcess = transportLauncher.launch(session, undefined, session.key_id || undefined);
-      this.wireEvents(session, ptyProcess);
+      this.wireEvents(session, ptyProcess, undefined, generation);
     } catch (err) {
       session.state = 'error';
       session.updated_at = new Date().toISOString();

@@ -90,7 +90,7 @@ describe('CodexWorkspace', () => {
     ]);
     apiMock.attachAgentSession
       .mockResolvedValueOnce(makeSession({ id: 'codex-session-a', title: 'codex-a', agent_session_name: 'codex-a', codex_session_name: 'codex-a' }))
-      .mockResolvedValueOnce(makeSession({ id: 'codex-session-b', title: 'codex-b', agent_session_name: 'codex-b', codex_session_name: 'codex-b' }));
+      .mockResolvedValueOnce(makeSession({ id: 'codex-session-a', title: 'codex-b', agent_session_name: 'codex-b', codex_session_name: 'codex-b' }));
 
     render(<CodexWorkspace {...defaultProps} />);
 
@@ -100,7 +100,8 @@ describe('CodexWorkspace', () => {
       expect(apiMock.attachAgentSession).toHaveBeenCalledWith('codex', { name: 'codex-b', cols: 120, rows: 40 });
     });
     expect(apiMock.deleteSession).not.toHaveBeenCalled();
-    expect(await screen.findByTestId('terminal-codex-session-b')).toBeDefined();
+    expect(await screen.findByTestId('terminal-codex-session-a')).toBeDefined();
+    expect(screen.getAllByText('codex-b').length).toBeGreaterThan(1);
   });
 
   it('opens and closes a scratch shell in a side split', async () => {

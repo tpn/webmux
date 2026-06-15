@@ -6,6 +6,7 @@ describe('SessionBroker', () => {
   let tmpDir: string;
   let originalHome: string | undefined;
   let SessionBroker: typeof import('@backend/services/sessionBroker').SessionBroker;
+  let transportLauncher: typeof import('@backend/services/transportLauncher').transportLauncher;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'webmux-broker-'));
@@ -22,6 +23,7 @@ describe('SessionBroker', () => {
 
     jest.resetModules();
     ({ SessionBroker } = require('@backend/services/sessionBroker'));
+    ({ transportLauncher } = require('@backend/services/transportLauncher'));
   });
 
   afterEach(() => {
@@ -86,6 +88,21 @@ describe('SessionBroker', () => {
     await broker.delete(session.id);
     expect(broker.list()).toHaveLength(0);
     expect(broker.get(session.id)).toBeUndefined();
+  });
+
+  it('does not compact terminal positions after deleting an agent workspace session', async () => {
+    const broker = new SessionBroker();
+    await broker.initialize();
+    const first = await broker.create({ username: 'u', hostname: 'h', row: 0, col: 0 });
+    const second = await broker.create({ username: 'u', hostname: 'h', row: 2, col: 0 });
+    const { session: agent } = await broker.ensureAgentScratch('anonymous', 'codex', 'codexes', 80, 24, tmpDir);
+
+    await broker.delete(agent.id);
+
+    expect(broker.get(first.id)!.row).toBe(0);
+    expect(broker.get(first.id)!.col).toBe(0);
+    expect(broker.get(second.id)!.row).toBe(2);
+    expect(broker.get(second.id)!.col).toBe(0);
   });
 
   it('auto-assigns position when not specified', async () => {
@@ -195,6 +212,39 @@ describe('SessionBroker', () => {
     const session = await broker.create({ username: 'u', hostname: 'h' });
     const reconnected = await broker.reconnect(session.id);
     expect(reconnected.id).toBe(session.id);
+  });
+
+  it('ignores stale PTY exit events after relaunching an agent attach session', async () => {
+    const broker = new SessionBroker();
+    await broker.initialize();
+    const first = await broker.ensureAgentAttach(
+      'anonymous',
+      'codex',
+      'codexes',
+      'codex-a',
+      80,
+      24,
+      ['tmux', '-L', 'codex', 'attach-session', '-t', 'codex-a'],
+    );
+    const staleHandle = transportLauncher.getHandle(first.session.id) as unknown as { emit: (event: string, data: unknown) => void };
+
+    const second = await broker.ensureAgentAttach(
+      'anonymous',
+      'codex',
+      'codexes',
+      'codex-b',
+      80,
+      24,
+      ['tmux', '-L', 'codex', 'attach-session', '-t', 'codex-b'],
+    );
+
+    expect(second.session.id).toBe(first.session.id);
+    staleHandle.emit('exit', { exitCode: 0 });
+    expect(broker.get(first.session.id)!.state).toBe('connecting');
+
+    const currentHandle = transportLauncher.getHandle(first.session.id) as unknown as { emit: (event: string, data: unknown) => void };
+    currentHandle.emit('exit', { exitCode: 0 });
+    expect(broker.get(first.session.id)!.state).toBe('disconnected');
   });
 
   it('stores key_id on session', async () => {
