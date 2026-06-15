@@ -112,6 +112,10 @@ describe('Codex API Routes', () => {
     mockTmuxLists({ codex: output });
   }
 
+  function writeAuthConfig(content: string) {
+    fs.writeFileSync(path.join(tmpDir, 'config', 'auth.yaml'), content);
+  }
+
   it('parses tmux sessions from GET /api/agents/codex/sessions', async () => {
     mockTmuxList('codex-a\t1\t2\ncodex-b\t3\t0\n');
 
@@ -218,11 +222,17 @@ describe('Codex API Routes', () => {
 
   it('returns 503 when listing agent sessions fails unexpectedly', async () => {
     mockTmuxLists({ copilot: new Error('permission denied') });
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const res = await request(app).get('/api/agents/copilot/sessions');
+    try {
+      const res = await request(app).get('/api/agents/copilot/sessions');
 
-    expect(res.status).toBe(503);
-    expect(res.body.error).toContain('permission denied');
+      expect(res.status).toBe(503);
+      expect(res.body.error).toBe('Failed to list Copilot sessions');
+      expect(res.body.error).not.toContain('permission denied');
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it('rejects scratch shells for a selected session not present in tmux list', async () => {
@@ -232,6 +242,29 @@ describe('Codex API Routes', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('Codex session not found');
+  });
+
+  it('blocks shared agent sockets when local auth has multiple users', async () => {
+    writeAuthConfig(
+      'auth:\n' +
+        '  mode: local\n' +
+        '  users:\n' +
+        '    - username: alice\n' +
+        '      password_hash: hash\n' +
+        '    - username: bob\n' +
+        '      password_hash: hash\n',
+    );
+    const { signToken } = require('@backend/middleware/auth');
+    const token = signToken('alice');
+
+    const list = await request(app).get('/api/agents/codex/sessions').set('Authorization', `Bearer ${token}`);
+    const attach = await request(app).post('/api/agents/codex/attach').set('Authorization', `Bearer ${token}`).send({ name: 'codex-a' });
+
+    expect(list.status).toBe(403);
+    expect(attach.status).toBe(403);
+    expect(list.body.error).toBe('Agent sessions are disabled in multi-user mode');
+    expect(attach.body.error).toBe('Agent sessions are disabled in multi-user mode');
+    expect(mockExecFile).not.toHaveBeenCalled();
   });
 
   it('creates and reuses Claude attach sessions without exposing them through normal sessions', async () => {

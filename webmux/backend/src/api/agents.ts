@@ -1,7 +1,8 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { requireAuth, AuthPayload } from '../middleware/auth';
 import { agentService, AgentConfig } from '../services/agentService';
 import { sessionBroker } from '../services/sessionBroker';
+import { persistence } from '../services/persistenceManager';
 
 const router = Router();
 
@@ -26,9 +27,25 @@ function sendInvalidAgent(res: Response): void {
   res.status(404).json({ error: 'Agent kind not found' });
 }
 
+function requireAgentAccess(_req: Request, res: Response, next: NextFunction): void {
+  try {
+    const authConfig = persistence.loadAuth();
+    const userCount = authConfig.auth.users?.length ?? 0;
+    if (authConfig.auth.mode === 'none' || userCount <= 1) {
+      next();
+      return;
+    }
+  } catch (err) {
+    console.error('Agent access check failed:', err);
+  }
+
+  res.status(403).json({ error: 'Agent sessions are disabled in multi-user mode' });
+}
+
 export function createAgentRouter(fixedKind?: string): Router {
   const agentRouter = Router();
   agentRouter.use(requireAuth);
+  agentRouter.use(requireAgentAccess);
   const prefix = fixedKind ? '' : '/:kind';
 
   agentRouter.get(`${prefix}/sessions`, async (req: Request, res: Response) => {
@@ -41,7 +58,8 @@ export function createAgentRouter(fixedKind?: string): Router {
     try {
       res.json(await agentService.listSessions(config.kind));
     } catch (err) {
-      res.status(503).json({ error: (err as Error).message });
+      console.error(`${config.label} list error:`, err);
+      res.status(503).json({ error: `Failed to list ${config.label} sessions` });
     }
   });
 
