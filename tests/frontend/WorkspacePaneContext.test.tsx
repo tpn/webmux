@@ -17,13 +17,13 @@ function TestConsumer() {
 }
 
 describe('WorkspacePaneContext', () => {
-  it('returns terminals as the default activePane', () => {
+  it('returns codexes as the default activePane', () => {
     render(
       <WorkspacePaneProvider>
         <TestConsumer />
       </WorkspacePaneProvider>,
     );
-    expect(screen.getByTestId('pane').textContent).toBe('terminals');
+    expect(screen.getByTestId('pane').textContent).toBe('codexes');
   });
 
   it('updates activePane to desktops after setActivePane("desktops")', () => {
@@ -55,7 +55,7 @@ describe('WorkspacePaneContext', () => {
       </WorkspacePaneProvider>,
     );
     // Initial render reflects provider default
-    expect(screen.getByTestId('pane').textContent).toBe('terminals');
+    expect(screen.getByTestId('pane').textContent).toBe('codexes');
   });
 
   it('updates activePane to codexes after setActivePane("codexes")', () => {

@@ -129,11 +129,11 @@ describe('App', () => {
     mockAuth.authStatus = { mode: 'none', bootstrap_required: false };
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText('Click to add a session')).toBeDefined();
+      expect(screen.getByText('No Codex sessions')).toBeDefined();
     });
   });
 
-  it('lazy-mounts agent workspaces after first activation and keeps them mounted while hidden', async () => {
+  it('lands on Codexes and keeps that workspace mounted after switching panes', async () => {
     mockAuth.isLoading = false;
     mockAuth.isAuthenticated = true;
     mockAuth.authStatus = { mode: 'none', bootstrap_required: false };
@@ -141,19 +141,15 @@ describe('App', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Click to add a session')).toBeDefined();
-    });
-    expect(api.getAgentSessions).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Codexes' }));
-
-    await waitFor(() => {
       expect(api.getAgentSessions).toHaveBeenCalledWith('codex');
     });
     expect(api.getAgentSessions).toHaveBeenCalledTimes(1);
     expect(api.createAgentScratch).not.toHaveBeenCalled();
+    expect(screen.getByText('No Codex sessions')).toBeDefined();
 
     fireEvent.click(screen.getByRole('button', { name: 'Terminals' }));
+    expect(screen.getByText('Click to add a session')).toBeDefined();
+
     fireEvent.click(screen.getByRole('button', { name: 'Codexes' }));
 
     expect(api.getAgentSessions).toHaveBeenCalledTimes(1);

@@ -2,11 +2,14 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TopBar } from '@frontend/components/TopBar';
 import { InputBroadcastProvider } from '@frontend/contexts/InputBroadcastContext';
+import { WorkspacePaneProvider } from '@frontend/contexts/WorkspacePaneContext';
 import type { AuthState } from '@frontend/hooks/useAuth';
 import type { ReactNode } from 'react';
 
 const wrapper = ({ children }: { children: ReactNode }) => (
-  <InputBroadcastProvider>{children}</InputBroadcastProvider>
+  <InputBroadcastProvider>
+    <WorkspacePaneProvider>{children}</WorkspacePaneProvider>
+  </InputBroadcastProvider>
 );
 
 function makeAuth(overrides: Partial<AuthState> = {}): AuthState {
@@ -60,6 +63,7 @@ describe('TopBar', () => {
   it('renders logo and controls', () => {
     render(<TopBar {...defaultTopBarProps()} />, { wrapper });
     expect(screen.getAllByText(/WebMux/i).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Terminals' }));
     expect(screen.getByText('14px')).toBeDefined();
   });
 
@@ -79,6 +83,7 @@ describe('TopBar', () => {
   it('calls onFontSizeChange when clicking A- or A+', () => {
     const onFontSizeChange = vi.fn();
     render(<TopBar {...defaultTopBarProps()} onFontSizeChange={onFontSizeChange} />, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: 'Terminals' }));
     fireEvent.click(screen.getByText('A+'));
     expect(onFontSizeChange).toHaveBeenCalledWith(15);
     fireEvent.click(screen.getByText('A-'));
@@ -125,6 +130,7 @@ describe('TopBar', () => {
   it('shows term size and responds to C+/C-/R+/R-', () => {
     const onTermSizeChange = vi.fn();
     render(<TopBar {...defaultTopBarProps()} onTermSizeChange={onTermSizeChange} />, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: 'Terminals' }));
     expect(screen.getByText('80×24')).toBeDefined();
     fireEvent.click(screen.getByText('C+'));
     expect(onTermSizeChange).toHaveBeenCalledWith(90, 24);
