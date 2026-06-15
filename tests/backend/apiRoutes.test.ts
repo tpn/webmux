@@ -255,6 +255,34 @@ describe('API Routes', () => {
       expect(res.status).toBe(400);
     });
 
+    it('ignores internal exec argv and agent metadata on public create', async () => {
+      const res = await request(app)
+        .post('/api/sessions')
+        .send({
+          username: 'user',
+          hostname: 'box.example.com',
+          transport: 'exec',
+          exec_command: 'echo ok',
+          exec_argv: ['/bin/echo', 'pwned'],
+          exec_cwd: '/tmp',
+          workspace: 'codexes',
+          agent_kind: 'codex',
+          agent_role: 'scratch',
+          codex_role: 'scratch',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.exec_argv).toBeUndefined();
+      expect(res.body.exec_cwd).toBeUndefined();
+      expect(res.body.workspace).toBeUndefined();
+      expect(res.body.agent_kind).toBeUndefined();
+      expect(res.body.agent_role).toBeUndefined();
+      expect(res.body.codex_role).toBeUndefined();
+
+      const list = await request(app).get('/api/sessions');
+      expect(list.body.some((session: { id: string }) => session.id === res.body.id)).toBe(true);
+    });
+
     it('returns 400 when requested terminal position exceeds grid limits', async () => {
       await request(app)
         .put('/api/config')

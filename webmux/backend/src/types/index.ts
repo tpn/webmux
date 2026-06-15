@@ -167,8 +167,6 @@ export interface CreateSessionRequest {
   // For exec transport: command template with {host}, {port}, {user} substitutions.
   // Falls back to WEBMUX_EXEC_COMMAND env var if not set.
   exec_command?: string;
-  exec_argv?: string[];
-  exec_cwd?: string;
   cols?: number;
   rows?: number;
   row?: number;
@@ -179,12 +177,6 @@ export interface CreateSessionRequest {
   initial_cmd?: string;
   title?: string;
   persistent?: boolean;
-  workspace?: WorkspaceName;
-  agent_kind?: AgentKind;
-  agent_role?: AgentSessionRole;
-  agent_session_name?: string;
-  codex_role?: CodexSessionRole;
-  codex_session_name?: string;
 }
 
 export interface VncSession {

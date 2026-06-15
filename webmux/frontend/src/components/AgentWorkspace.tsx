@@ -155,6 +155,20 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
     }
   }, [agentKind, selectedName, termCols, termRows]);
 
+  const closeScratch = useCallback(async () => {
+    const session = scratchSession;
+    if (!session) return;
+
+    setScratchVisible(false);
+    setScratchSession(null);
+    setError(null);
+    try {
+      await api.deleteSession(session.id);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, [scratchSession]);
+
   const showScratch = scratchVisible && scratchSession;
 
   return (
@@ -210,7 +224,7 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
             fontSize={fontSize}
             theme={activeTheme}
             agent={agent}
-            onClose={() => setScratchVisible(false)}
+            onClose={closeScratch}
             closeTitle="Close scratch shell"
           />
         )}

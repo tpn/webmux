@@ -7,7 +7,7 @@ import { presenceService } from './presenceService';
 import { persistence } from './persistenceManager';
 import { compactPositions } from './gridLayout';
 import { assertTerminalGridPosition, nextTerminalGridPosition } from './terminalGridLimits';
-import type { AgentKind, AgentWorkspaceName, WorkspaceName } from '../types';
+import type { AgentKind, AgentSessionRole, AgentWorkspaceName, CodexSessionRole, WorkspaceName } from '../types';
 
 const AGENT_WORKSPACES = new Set<WorkspaceName>(['codexes', 'claudes', 'copilots']);
 
@@ -29,6 +29,17 @@ function agentRole(session: Session) {
 
 function agentSessionName(session: Session) {
   return session.agent_session_name ?? session.codex_session_name;
+}
+
+interface InternalCreateSessionOptions {
+  execArgv?: string[];
+  execCwd?: string;
+  workspace?: WorkspaceName;
+  agentKind?: AgentKind;
+  agentRole?: AgentSessionRole;
+  agentSessionName?: string;
+  codexRole?: CodexSessionRole;
+  codexSessionName?: string;
 }
 
 export class SessionBroker extends EventEmitter {
@@ -81,7 +92,7 @@ export class SessionBroker extends EventEmitter {
     this.persistSessions();
   }
 
-  async create(req: CreateSessionRequest, owner: string = 'anonymous'): Promise<Session> {
+  async create(req: CreateSessionRequest, owner: string = 'anonymous', internal: InternalCreateSessionOptions = {}): Promise<Session> {
     const id = uuidv4();
 
     // Determine hostname
@@ -102,13 +113,13 @@ export class SessionBroker extends EventEmitter {
 
     // Determine layout position (scoped to this owner's sessions)
     const ownerSessions = Array.from(this.sessions.values()).filter(s => s.owner === owner && !isAgentWorkspace(s.workspace));
-    const { row, col } = isAgentWorkspace(req.workspace)
+    const { row, col } = isAgentWorkspace(internal.workspace)
       ? { row: req.row ?? 0, col: req.col ?? 0 }
       : nextTerminalGridPosition(ownerSessions, req.row, req.col);
 
-    const agentKind = req.agent_kind ?? (req.codex_role ? 'codex' : undefined);
-    const agentRoleValue = req.agent_role ?? req.codex_role;
-    const agentSessionNameValue = req.agent_session_name ?? req.codex_session_name;
+    const agentKind = internal.agentKind ?? (internal.codexRole ? 'codex' : undefined);
+    const agentRoleValue = internal.agentRole ?? internal.codexRole;
+    const agentSessionNameValue = internal.agentSessionName ?? internal.codexSessionName;
 
     // Determine transport: use mosh if host allows it and config prefers it
     let transport = req.transport || 'ssh';
@@ -136,8 +147,8 @@ export class SessionBroker extends EventEmitter {
       username: req.username,
       key_id: req.key_id || '',
       exec_command: req.exec_command,
-      exec_argv: req.exec_argv,
-      exec_cwd: req.exec_cwd,
+      exec_argv: internal.execArgv,
+      exec_cwd: internal.execCwd,
       cols: req.cols || 80,
       rows: req.rows || 24,
       row,
@@ -148,12 +159,12 @@ export class SessionBroker extends EventEmitter {
       title: req.title || (transport === 'exec' ? `${hostname}:${port}` : `${req.username}@${hostname}`),
       persistent: req.persistent ?? true,
       minimized: false,
-      workspace: req.workspace,
+      workspace: internal.workspace,
       agent_kind: agentKind,
       agent_role: agentRoleValue,
       agent_session_name: agentSessionNameValue,
-      codex_role: agentKind === 'codex' ? agentRoleValue : req.codex_role,
-      codex_session_name: agentKind === 'codex' ? agentSessionNameValue : req.codex_session_name,
+      codex_role: agentKind === 'codex' ? agentRoleValue : internal.codexRole,
+      codex_session_name: agentKind === 'codex' ? agentSessionNameValue : internal.codexSessionName,
     };
 
     this.sessions.set(id, session);
@@ -349,20 +360,21 @@ export class SessionBroker extends EventEmitter {
       hostname: `${kind}.local`,
       port: 0,
       transport: 'exec',
-      exec_argv: execArgv,
       cols,
       rows,
       row: 0,
       col: 0,
       title: name,
       persistent: false,
+    }, owner, {
+      execArgv,
       workspace,
-      agent_kind: kind,
-      agent_role: 'attach',
-      agent_session_name: name,
-      codex_role: kind === 'codex' ? 'attach' : undefined,
-      codex_session_name: kind === 'codex' ? name : undefined,
-    }, owner);
+      agentKind: kind,
+      agentRole: 'attach',
+      agentSessionName: name,
+      codexRole: kind === 'codex' ? 'attach' : undefined,
+      codexSessionName: kind === 'codex' ? name : undefined,
+    });
     return { session, created: true };
   }
 
@@ -404,19 +416,20 @@ export class SessionBroker extends EventEmitter {
       hostname: 'local.shell',
       port: 0,
       transport: 'exec',
-      exec_argv: execArgv,
-      exec_cwd: cwd,
       cols,
       rows,
       row: 0,
       col: 1,
       title: 'Scratch shell',
       persistent: false,
+    }, owner, {
+      execArgv,
+      execCwd: cwd,
       workspace,
-      agent_kind: kind,
-      agent_role: 'scratch',
-      codex_role: kind === 'codex' ? 'scratch' : undefined,
-    }, owner);
+      agentKind: kind,
+      agentRole: 'scratch',
+      codexRole: kind === 'codex' ? 'scratch' : undefined,
+    });
     return { session, created: true };
   }
 

@@ -8,6 +8,7 @@ const apiMock = vi.hoisted(() => ({
   getAgentSessions: vi.fn(),
   attachAgentSession: vi.fn(),
   createAgentScratch: vi.fn(),
+  deleteSession: vi.fn(),
 }));
 
 vi.mock('@frontend/utils/api', () => ({
@@ -70,6 +71,7 @@ describe('CodexWorkspace', () => {
       codex_role: 'scratch',
       codex_session_name: undefined,
     }));
+    apiMock.deleteSession.mockResolvedValue(undefined);
   });
 
   it('auto-selects the first codex session and requests attach', async () => {
@@ -116,6 +118,9 @@ describe('CodexWorkspace', () => {
 
     fireEvent.click(screen.getByTitle('Close scratch shell'));
 
+    await waitFor(() => {
+      expect(apiMock.deleteSession).toHaveBeenCalledWith('codex-scratch-1');
+    });
     expect(screen.getByTestId('codex-layout')).toHaveStyle('grid-template-columns: minmax(0, 1fr)');
   });
 
