@@ -113,41 +113,35 @@ function AuthenticatedApp({
         <div style={{ display: activePane === 'desktops' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
           <GraphicsWorkspace />
         </div>
-        {activePane === 'codexes' && (
-          <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
-            <CodexWorkspace
-              fontSize={fontSize}
-              termCols={termCols}
-              termRows={termRows}
-              themes={themes}
-              globalTheme={globalTheme}
-            />
-          </div>
-        )}
-        {activePane === 'claudes' && (
-          <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
-            <AgentWorkspace
-              agentKind="claude"
-              fontSize={fontSize}
-              termCols={termCols}
-              termRows={termRows}
-              themes={themes}
-              globalTheme={globalTheme}
-            />
-          </div>
-        )}
-        {activePane === 'copilots' && (
-          <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
-            <AgentWorkspace
-              agentKind="copilot"
-              fontSize={fontSize}
-              termCols={termCols}
-              termRows={termRows}
-              themes={themes}
-              globalTheme={globalTheme}
-            />
-          </div>
-        )}
+        <div style={{ display: activePane === 'codexes' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
+          <CodexWorkspace
+            fontSize={fontSize}
+            termCols={termCols}
+            termRows={termRows}
+            themes={themes}
+            globalTheme={globalTheme}
+          />
+        </div>
+        <div style={{ display: activePane === 'claudes' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
+          <AgentWorkspace
+            agentKind="claude"
+            fontSize={fontSize}
+            termCols={termCols}
+            termRows={termRows}
+            themes={themes}
+            globalTheme={globalTheme}
+          />
+        </div>
+        <div style={{ display: activePane === 'copilots' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
+          <AgentWorkspace
+            agentKind="copilot"
+            fontSize={fontSize}
+            termCols={termCols}
+            termRows={termRows}
+            themes={themes}
+            globalTheme={globalTheme}
+          />
+        </div>
       </div>
 
       {showRegister && (

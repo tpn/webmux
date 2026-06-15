@@ -123,6 +123,20 @@ describe('App', () => {
     });
   });
 
+  it('keeps agent workspaces mounted while their panes are hidden', async () => {
+    mockAuth.isLoading = false;
+    mockAuth.isAuthenticated = true;
+    mockAuth.authStatus = { mode: 'none', bootstrap_required: false };
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(api.getAgentSessions).toHaveBeenCalledWith('codex');
+      expect(api.getAgentSessions).toHaveBeenCalledWith('claude');
+      expect(api.getAgentSessions).toHaveBeenCalledWith('copilot');
+    });
+  });
+
   it('loads config after authentication and applies terminal grid limits', async () => {
     mockAuth.isLoading = false;
     mockAuth.isAuthenticated = false;
