@@ -7,6 +7,29 @@ import { presenceService } from './presenceService';
 import { persistence } from './persistenceManager';
 import { compactPositions } from './gridLayout';
 import { assertTerminalGridPosition, nextTerminalGridPosition } from './terminalGridLimits';
+import type { AgentKind, AgentWorkspaceName, WorkspaceName } from '../types';
+
+const AGENT_WORKSPACES = new Set<WorkspaceName>(['codexes', 'claudes', 'copilots']);
+
+function isAgentWorkspace(workspace?: WorkspaceName): workspace is AgentWorkspaceName {
+  return workspace !== undefined && AGENT_WORKSPACES.has(workspace);
+}
+
+function inferAgentKind(session: Session): AgentKind | undefined {
+  if (session.agent_kind) return session.agent_kind;
+  if (session.workspace === 'codexes' || session.codex_role) return 'codex';
+  if (session.workspace === 'claudes') return 'claude';
+  if (session.workspace === 'copilots') return 'copilot';
+  return undefined;
+}
+
+function agentRole(session: Session) {
+  return session.agent_role ?? session.codex_role;
+}
+
+function agentSessionName(session: Session) {
+  return session.agent_session_name ?? session.codex_session_name;
+}
 
 export class SessionBroker extends EventEmitter {
   private sessions = new Map<string, Session>();
@@ -25,7 +48,7 @@ export class SessionBroker extends EventEmitter {
     console.log(`Loaded ${saved.length} sessions from persistence`);
 
     // Auto-reconnect persistent sessions that were previously active
-    const reconnectable = saved.filter(s => s.persistent && s.hostname);
+    const reconnectable = saved.filter(s => s.persistent && s.hostname && !isAgentWorkspace(s.workspace));
     if (reconnectable.length > 0) {
       console.log(`Auto-reconnecting ${reconnectable.length} persistent sessions...`);
       for (const session of reconnectable) {
@@ -78,8 +101,14 @@ export class SessionBroker extends EventEmitter {
     }
 
     // Determine layout position (scoped to this owner's sessions)
-    const ownerSessions = Array.from(this.sessions.values()).filter(s => s.owner === owner);
-    const { row, col } = nextTerminalGridPosition(ownerSessions, req.row, req.col);
+    const ownerSessions = Array.from(this.sessions.values()).filter(s => s.owner === owner && !isAgentWorkspace(s.workspace));
+    const { row, col } = isAgentWorkspace(req.workspace)
+      ? { row: req.row ?? 0, col: req.col ?? 0 }
+      : nextTerminalGridPosition(ownerSessions, req.row, req.col);
+
+    const agentKind = req.agent_kind ?? (req.codex_role ? 'codex' : undefined);
+    const agentRoleValue = req.agent_role ?? req.codex_role;
+    const agentSessionNameValue = req.agent_session_name ?? req.codex_session_name;
 
     // Determine transport: use mosh if host allows it and config prefers it
     let transport = req.transport || 'ssh';
@@ -107,6 +136,8 @@ export class SessionBroker extends EventEmitter {
       username: req.username,
       key_id: req.key_id || '',
       exec_command: req.exec_command,
+      exec_argv: req.exec_argv,
+      exec_cwd: req.exec_cwd,
       cols: req.cols || 80,
       rows: req.rows || 24,
       row,
@@ -114,9 +145,15 @@ export class SessionBroker extends EventEmitter {
       state: 'connecting',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      title: transport === 'exec' ? `${hostname}:${port}` : `${req.username}@${hostname}`,
-      persistent: true,
+      title: req.title || (transport === 'exec' ? `${hostname}:${port}` : `${req.username}@${hostname}`),
+      persistent: req.persistent ?? true,
       minimized: false,
+      workspace: req.workspace,
+      agent_kind: agentKind,
+      agent_role: agentRoleValue,
+      agent_session_name: agentSessionNameValue,
+      codex_role: agentKind === 'codex' ? agentRoleValue : req.codex_role,
+      codex_session_name: agentKind === 'codex' ? agentSessionNameValue : req.codex_session_name,
     };
 
     this.sessions.set(id, session);
@@ -240,7 +277,7 @@ export class SessionBroker extends EventEmitter {
     this.sessions.delete(sessionId);
     this.scrollback.delete(sessionId);
     if (owner) {
-      const ownerSessions = Array.from(this.sessions.values()).filter(s => s.owner === owner);
+      const ownerSessions = Array.from(this.sessions.values()).filter(s => s.owner === owner && !isAgentWorkspace(s.workspace));
       compactPositions(ownerSessions);
     }
     this.persistSessions();
@@ -258,7 +295,174 @@ export class SessionBroker extends EventEmitter {
   }
 
   listByOwner(owner: string): Session[] {
-    return Array.from(this.sessions.values()).filter(s => s.owner === owner);
+    return Array.from(this.sessions.values()).filter(s => s.owner === owner && !isAgentWorkspace(s.workspace));
+  }
+
+  listAgentByOwner(owner: string, kind?: AgentKind): Session[] {
+    return Array.from(this.sessions.values()).filter(s => {
+      if (s.owner !== owner || !isAgentWorkspace(s.workspace)) return false;
+      return !kind || inferAgentKind(s) === kind;
+    });
+  }
+
+  findAgentAttach(owner: string, kind: AgentKind, name: string): Session | undefined {
+    return this.listAgentByOwner(owner, kind).find(s => agentRole(s) === 'attach' && agentSessionName(s) === name);
+  }
+
+  findAgentScratch(owner: string, kind: AgentKind): Session | undefined {
+    return this.listAgentByOwner(owner, kind).find(s => agentRole(s) === 'scratch');
+  }
+
+  async ensureAgentAttach(
+    owner: string,
+    kind: AgentKind,
+    workspace: AgentWorkspaceName,
+    name: string,
+    cols: number,
+    rows: number,
+    execArgv: string[],
+  ): Promise<{ session: Session; created: boolean }> {
+    const existing = this.findAgentAttach(owner, kind, name);
+    if (existing) {
+      existing.cols = cols;
+      existing.rows = rows;
+      existing.exec_argv = execArgv;
+      existing.agent_kind = kind;
+      existing.agent_role = 'attach';
+      existing.agent_session_name = name;
+      if (kind === 'codex') {
+        existing.codex_role = 'attach';
+        existing.codex_session_name = name;
+      }
+      existing.updated_at = new Date().toISOString();
+      if (!transportLauncher.isAlive(existing.id) || existing.state === 'disconnected' || existing.state === 'error') {
+        this.relaunch(existing);
+      } else {
+        transportLauncher.resize(existing.id, cols, rows);
+      }
+      this.persistSessions();
+      return { session: existing, created: false };
+    }
+
+    const session = await this.create({
+      username: kind,
+      hostname: `${kind}.local`,
+      port: 0,
+      transport: 'exec',
+      exec_argv: execArgv,
+      cols,
+      rows,
+      row: 0,
+      col: 0,
+      title: name,
+      persistent: false,
+      workspace,
+      agent_kind: kind,
+      agent_role: 'attach',
+      agent_session_name: name,
+      codex_role: kind === 'codex' ? 'attach' : undefined,
+      codex_session_name: kind === 'codex' ? name : undefined,
+    }, owner);
+    return { session, created: true };
+  }
+
+  async ensureAgentScratch(
+    owner: string,
+    kind: AgentKind,
+    workspace: AgentWorkspaceName,
+    cols: number,
+    rows: number,
+    cwd?: string,
+  ): Promise<{ session: Session; created: boolean }> {
+    const execArgv = ['/bin/zsh', '-l'];
+    const existing = this.findAgentScratch(owner, kind);
+    if (existing) {
+      existing.cols = cols;
+      existing.rows = rows;
+      existing.exec_argv = execArgv;
+      existing.exec_cwd = cwd;
+      existing.agent_kind = kind;
+      existing.agent_role = 'scratch';
+      existing.agent_session_name = undefined;
+      if (kind === 'codex') {
+        existing.codex_role = 'scratch';
+        existing.codex_session_name = undefined;
+      }
+      existing.updated_at = new Date().toISOString();
+      if (!transportLauncher.isAlive(existing.id) || existing.state === 'disconnected' || existing.state === 'error') {
+        this.relaunch(existing);
+      } else {
+        transportLauncher.resize(existing.id, cols, rows);
+      }
+      this.persistSessions();
+      return { session: existing, created: false };
+    }
+
+    const session = await this.create({
+      username: 'shell',
+      hostname: 'local.shell',
+      port: 0,
+      transport: 'exec',
+      exec_argv: execArgv,
+      exec_cwd: cwd,
+      cols,
+      rows,
+      row: 0,
+      col: 1,
+      title: 'Scratch shell',
+      persistent: false,
+      workspace,
+      agent_kind: kind,
+      agent_role: 'scratch',
+      codex_role: kind === 'codex' ? 'scratch' : undefined,
+    }, owner);
+    return { session, created: true };
+  }
+
+  listCodexByOwner(owner: string): Session[] {
+    return this.listAgentByOwner(owner, 'codex');
+  }
+
+  findCodexAttach(owner: string, name: string): Session | undefined {
+    return this.findAgentAttach(owner, 'codex', name);
+  }
+
+  findCodexScratch(owner: string): Session | undefined {
+    return this.findAgentScratch(owner, 'codex');
+  }
+
+  async ensureCodexAttach(
+    owner: string,
+    name: string,
+    cols: number,
+    rows: number,
+    execArgv: string[],
+  ): Promise<{ session: Session; created: boolean }> {
+    return this.ensureAgentAttach(owner, 'codex', 'codexes', name, cols, rows, execArgv);
+  }
+
+  async ensureCodexScratch(
+    owner: string,
+    cols: number,
+    rows: number,
+    cwd?: string,
+  ): Promise<{ session: Session; created: boolean }> {
+    return this.ensureAgentScratch(owner, 'codex', 'codexes', cols, rows, cwd);
+  }
+
+  private relaunch(session: Session): void {
+    transportLauncher.kill(session.id);
+    session.state = 'connecting';
+    session.updated_at = new Date().toISOString();
+    this.scrollback.delete(session.id);
+    try {
+      const ptyProcess = transportLauncher.launch(session, undefined, session.key_id || undefined);
+      this.wireEvents(session, ptyProcess);
+    } catch (err) {
+      session.state = 'error';
+      session.updated_at = new Date().toISOString();
+      throw err;
+    }
   }
 
   move(sessionId: string, row: number, col: number): Session {
@@ -312,7 +516,7 @@ export class SessionBroker extends EventEmitter {
 
     try {
       const layout = persistence.loadLayout();
-      layout.layout.tiles = sessions.map(s => ({
+      layout.layout.tiles = sessions.filter(s => !isAgentWorkspace(s.workspace)).map(s => ({
         session_id: s.id,
         row: s.row,
         col: s.col,
