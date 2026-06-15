@@ -164,7 +164,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
     const term = new XTerm({
       theme: { ...DEFAULT_TERMINAL_THEME, ...(theme || {}) },
-      fontFamily: 'Consolas, Menlo, "DejaVu Sans Mono", monospace',
+      fontFamily: '"Comic Mono", Monaco, Consolas, Menlo, "DejaVu Sans Mono", monospace',
       fontSize,
       cursorBlink: true,
       macOptionIsMeta: /Mac|iPhone|iPad/.test(navigator.platform),

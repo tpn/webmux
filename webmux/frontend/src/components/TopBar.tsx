@@ -325,7 +325,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     minWidth: 48,
     textAlign: 'center',
-    fontFamily: 'monospace',
+    fontFamily: '"Comic Mono", Monaco, Consolas, Menlo, monospace',
   },
   modeBadge: {
     border: '1px solid',
