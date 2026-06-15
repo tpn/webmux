@@ -31,7 +31,7 @@ export function createAgentRouter(fixedKind?: string): Router {
   agentRouter.use(requireAuth);
   const prefix = fixedKind ? '' : '/:kind';
 
-  agentRouter.get(`${prefix}/sessions`, (req: Request, res: Response) => {
+  agentRouter.get(`${prefix}/sessions`, async (req: Request, res: Response) => {
     const config = getRouteConfig(req, fixedKind);
     if (!config) {
       sendInvalidAgent(res);
@@ -39,7 +39,7 @@ export function createAgentRouter(fixedKind?: string): Router {
     }
 
     try {
-      res.json(agentService.listSessions(config.kind));
+      res.json(await agentService.listSessions(config.kind));
     } catch (err) {
       res.status(503).json({ error: (err as Error).message });
     }
@@ -59,7 +59,7 @@ export function createAgentRouter(fixedKind?: string): Router {
         return;
       }
 
-      if (!agentService.hasSession(config.kind, name)) {
+      if (!(await agentService.hasSession(config.kind, name))) {
         res.status(404).json({ error: `${config.label} session not found` });
         return;
       }
@@ -91,7 +91,7 @@ export function createAgentRouter(fixedKind?: string): Router {
     try {
       const { selectedName } = req.body as { selectedName?: string };
       const { cols, rows } = parseTermSize(req.body as { cols?: unknown; rows?: unknown });
-      const cwd = selectedName ? agentService.getPaneCurrentPath(config.kind, selectedName) : undefined;
+      const cwd = selectedName ? await agentService.getPaneCurrentPath(config.kind, selectedName) : undefined;
       const result = await sessionBroker.ensureAgentScratch(getOwner(req), config.kind, config.workspace, cols, rows, cwd);
       res.status(result.created ? 201 : 200).json(result.session);
     } catch (err) {

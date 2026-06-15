@@ -4,11 +4,11 @@ import * as os from 'os';
 import express from 'express';
 import request from 'supertest';
 
-const mockExecFileSync = jest.fn();
+const mockExecFile = jest.fn();
 const mockExecSync = jest.fn();
 
 jest.mock('child_process', () => ({
-  execFileSync: mockExecFileSync,
+  execFile: mockExecFile,
   execSync: mockExecSync,
 }));
 
@@ -51,12 +51,11 @@ describe('Codex API Routes', () => {
         '    ssh_fallback: true\n',
     );
 
-    mockExecFileSync.mockReset();
+    mockExecFile.mockReset();
     mockExecSync.mockReset();
     jest.resetModules();
 
     const { default: agentsRouter } = require('@backend/api/agents');
-    const { default: codexRouter } = require('@backend/api/codex');
     const { default: sessionsRouter } = require('@backend/api/sessions');
     sessionBroker = require('@backend/services/sessionBroker').sessionBroker;
     transportLauncher = require('@backend/services/transportLauncher').transportLauncher;
@@ -66,7 +65,6 @@ describe('Codex API Routes', () => {
     app = express();
     app.use(express.json());
     app.use('/api/agents', agentsRouter);
-    app.use('/api/codex', codexRouter);
     app.use('/api/sessions', sessionsRouter);
   });
 
@@ -90,16 +88,23 @@ describe('Codex API Routes', () => {
   });
 
   function mockTmuxLists(outputs: Record<string, string | Error>) {
-    mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+    mockExecFile.mockImplementation((_cmd: string, args: string[], _options: unknown, callback: (err: Error | null, stdout?: string) => void) => {
       const socketIndex = args.indexOf('-L');
       const socket = socketIndex >= 0 ? args[socketIndex + 1] : 'default';
       if (args.includes('list-sessions')) {
         const output = outputs[socket];
-        if (output instanceof Error) throw output;
-        return output ?? '';
+        if (output instanceof Error) {
+          callback(output);
+          return;
+        }
+        callback(null, output ?? '');
+        return;
       }
-      if (args.includes('display-message')) return tmpDir + '\n';
-      return '';
+      if (args.includes('display-message')) {
+        callback(null, tmpDir + '\n');
+        return;
+      }
+      callback(null, '');
     });
   }
 
@@ -107,10 +112,10 @@ describe('Codex API Routes', () => {
     mockTmuxLists({ codex: output });
   }
 
-  it('parses tmux sessions from GET /api/codex/sessions', async () => {
+  it('parses tmux sessions from GET /api/agents/codex/sessions', async () => {
     mockTmuxList('codex-a\t1\t2\ncodex-b\t3\t0\n');
 
-    const res = await request(app).get('/api/codex/sessions');
+    const res = await request(app).get('/api/agents/codex/sessions');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([
@@ -122,7 +127,7 @@ describe('Codex API Routes', () => {
   it('returns an empty list when tmux has no codex sessions', async () => {
     mockTmuxList('');
 
-    const res = await request(app).get('/api/codex/sessions');
+    const res = await request(app).get('/api/agents/codex/sessions');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
@@ -131,7 +136,7 @@ describe('Codex API Routes', () => {
   it('rejects attach for a name not present in tmux list', async () => {
     mockTmuxList('codex-a\t1\t0\n');
 
-    const res = await request(app).post('/api/codex/attach').send({ name: 'missing' });
+    const res = await request(app).post('/api/agents/codex/attach').send({ name: 'missing' });
 
     expect(res.status).toBe(404);
   });
@@ -139,8 +144,8 @@ describe('Codex API Routes', () => {
   it('reuses one codex attach session when switching tmux names', async () => {
     mockTmuxList('codex-a\t1\t0\ncodex-b\t1\t0\n');
 
-    const first = await request(app).post('/api/codex/attach').send({ name: 'codex-a', cols: 120, rows: 40 });
-    const second = await request(app).post('/api/codex/attach').send({ name: 'codex-b', cols: 120, rows: 40 });
+    const first = await request(app).post('/api/agents/codex/attach').send({ name: 'codex-a', cols: 120, rows: 40 });
+    const second = await request(app).post('/api/agents/codex/attach').send({ name: 'codex-b', cols: 120, rows: 40 });
 
     expect(first.status).toBe(201);
     expect(second.status).toBe(200);
@@ -158,7 +163,7 @@ describe('Codex API Routes', () => {
   it('excludes codex sessions from normal /api/sessions', async () => {
     mockTmuxList('codex-a\t1\t0\n');
 
-    await request(app).post('/api/codex/attach').send({ name: 'codex-a' });
+    await request(app).post('/api/agents/codex/attach').send({ name: 'codex-a' });
     const res = await request(app).get('/api/sessions');
 
     expect(res.status).toBe(200);
@@ -168,8 +173,8 @@ describe('Codex API Routes', () => {
   it('creates and reuses a codex scratch shell', async () => {
     mockTmuxList('codex-a\t1\t0\n');
 
-    const first = await request(app).post('/api/codex/scratch').send({ selectedName: 'codex-a' });
-    const second = await request(app).post('/api/codex/scratch').send({ selectedName: 'codex-a' });
+    const first = await request(app).post('/api/agents/codex/scratch').send({ selectedName: 'codex-a' });
+    const second = await request(app).post('/api/agents/codex/scratch').send({ selectedName: 'codex-a' });
 
     expect(first.status).toBe(201);
     expect(second.status).toBe(200);
@@ -187,7 +192,7 @@ describe('Codex API Routes', () => {
     mockTmuxList('codex-a\t1\t0\n');
     delete process.env.SHELL;
 
-    const res = await request(app).post('/api/codex/scratch').send({ selectedName: 'codex-a' });
+    const res = await request(app).post('/api/agents/codex/scratch').send({ selectedName: 'codex-a' });
 
     expect(res.status).toBe(201);
     expect(res.body.exec_argv).toEqual(['/bin/sh', '-l']);

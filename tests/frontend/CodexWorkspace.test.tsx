@@ -155,5 +155,11 @@ describe('CodexWorkspace', () => {
     expect(await screen.findByText('No Copilot sessions')).toBeDefined();
     expect(apiMock.attachAgentSession).not.toHaveBeenCalled();
     expect(screen.getByTestId('copilot-layout')).toHaveStyle('grid-template-columns: minmax(0, 1fr)');
+
+    fireEvent.click(screen.getByText('+ Shell'));
+
+    await waitFor(() => {
+      expect(apiMock.createAgentScratch).toHaveBeenCalledWith('copilot', { selectedName: undefined, cols: 60, rows: 40 });
+    });
   });
 });

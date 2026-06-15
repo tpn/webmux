@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { AgentKind, AgentWorkspaceName } from '../types';
@@ -62,17 +62,29 @@ export class AgentService {
       .filter(session => session.name.length > 0);
   }
 
-  listSessions(kind: AgentKind): AgentTmuxSession[] {
+  private execFileOutput(command: string, args: string[]): Promise<string> {
+    return new Promise((resolve, reject) => {
+      execFile(command, args, { encoding: 'utf8' }, (err, stdout) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(String(stdout));
+      });
+    });
+  }
+
+  async listSessions(kind: AgentKind): Promise<AgentTmuxSession[]> {
     const config = CONFIGS[kind];
     try {
-      const output = execFileSync('tmux', [
+      const output = await this.execFileOutput('tmux', [
         '-L',
         config.socket,
         'list-sessions',
         '-F',
         '#S\t#{session_windows}\t#{session_attached}',
-      ], { encoding: 'utf8' });
-      return this.parseTmuxSessions(String(output));
+      ]);
+      return this.parseTmuxSessions(output);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         throw new Error('tmux is not installed');
@@ -81,17 +93,17 @@ export class AgentService {
     }
   }
 
-  hasSession(kind: AgentKind, name: string): boolean {
-    return this.listSessions(kind).some(session => session.name === name);
+  async hasSession(kind: AgentKind, name: string): Promise<boolean> {
+    return (await this.listSessions(kind)).some(session => session.name === name);
   }
 
   buildAttachExecArgv(kind: AgentKind, name: string): string[] {
     return ['tmux', '-L', CONFIGS[kind].socket, 'attach-session', '-t', name];
   }
 
-  getPaneCurrentPath(kind: AgentKind, name: string): string | undefined {
+  async getPaneCurrentPath(kind: AgentKind, name: string): Promise<string | undefined> {
     try {
-      const output = execFileSync('tmux', [
+      const output = await this.execFileOutput('tmux', [
         '-L',
         CONFIGS[kind].socket,
         'display-message',
@@ -99,10 +111,10 @@ export class AgentService {
         '-t',
         name,
         '#{pane_current_path}',
-      ], { encoding: 'utf8' });
-      const cwd = String(output).trim();
+      ]);
+      const cwd = output.trim();
       if (!cwd || !path.isAbsolute(cwd)) return undefined;
-      const stat = fs.statSync(cwd);
+      const stat = await fs.promises.stat(cwd);
       return stat.isDirectory() ? cwd : undefined;
     } catch {
       return undefined;

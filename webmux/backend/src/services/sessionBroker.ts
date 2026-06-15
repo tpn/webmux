@@ -467,37 +467,6 @@ export class SessionBroker extends EventEmitter {
     return { session, created: true };
   }
 
-  listCodexByOwner(owner: string): Session[] {
-    return this.listAgentByOwner(owner, 'codex');
-  }
-
-  findCodexAttach(owner: string, name: string): Session | undefined {
-    return this.findAgentAttach(owner, 'codex', name);
-  }
-
-  findCodexScratch(owner: string): Session | undefined {
-    return this.findAgentScratch(owner, 'codex');
-  }
-
-  async ensureCodexAttach(
-    owner: string,
-    name: string,
-    cols: number,
-    rows: number,
-    execArgv: string[],
-  ): Promise<{ session: Session; created: boolean }> {
-    return this.ensureAgentAttach(owner, 'codex', 'codexes', name, cols, rows, execArgv);
-  }
-
-  async ensureCodexScratch(
-    owner: string,
-    cols: number,
-    rows: number,
-    cwd?: string,
-  ): Promise<{ session: Session; created: boolean }> {
-    return this.ensureAgentScratch(owner, 'codex', 'codexes', cols, rows, cwd);
-  }
-
   private relaunch(session: Session): void {
     const generation = this.bumpLaunchGeneration(session.id);
     transportLauncher.kill(session.id);

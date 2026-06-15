@@ -124,8 +124,6 @@ export interface AgentTmuxSession {
   attached: number;
 }
 
-export type CodexTmuxSession = AgentTmuxSession;
-
 export interface KeyEntry {
   id: string;
   type: string;

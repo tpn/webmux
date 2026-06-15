@@ -82,6 +82,7 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
   const [scratchVisible, setScratchVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [attachLoading, setAttachLoading] = useState(false);
+  const [scratchLoading, setScratchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const attachRequestRef = useRef(0);
 
@@ -157,6 +158,8 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
   }, [attachSelected, deleteAgentSession, selectedName]);
 
   const openScratch = useCallback(async () => {
+    if (scratchLoading) return;
+    setScratchLoading(true);
     setError(null);
     try {
       const session = await api.createAgentScratch(agentKind, {
@@ -168,8 +171,10 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
       setScratchVisible(true);
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setScratchLoading(false);
     }
-  }, [agentKind, selectedName, termCols, termRows]);
+  }, [agentKind, scratchLoading, selectedName, termCols, termRows]);
 
   const closeScratch = useCallback(async () => {
     const session = scratchSession;
@@ -215,7 +220,7 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
         <button style={styles.stripButton} onClick={loadSessions} title={`Refresh ${agent.label} sessions`}>
           {'\u21bb'}
         </button>
-        <button style={styles.stripButton} onClick={openScratch} disabled={!attachedSession} title="Open scratch shell">
+        <button style={styles.stripButton} onClick={openScratch} disabled={scratchLoading} title="Open scratch shell">
           + Shell
         </button>
       </div>
