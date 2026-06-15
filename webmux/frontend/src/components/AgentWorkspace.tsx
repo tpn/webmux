@@ -69,6 +69,7 @@ function TerminalPanel({ session, fontSize, theme, agent, fitTrigger, onClose, c
           onFocusGained={() => {}}
           theme={theme?.theme}
           fitTrigger={fitTrigger}
+          suppressDeviceAttributeResponses={role === 'attach'}
         />
       </div>
     </div>

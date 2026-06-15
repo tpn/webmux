@@ -49,6 +49,7 @@ interface TerminalProps {
   theme?: TerminalTheme | null;
   onBell?: () => void;
   fitTrigger?: unknown;
+  suppressDeviceAttributeResponses?: boolean;
 }
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal({
@@ -62,6 +63,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   theme,
   onBell,
   fitTrigger,
+  suppressDeviceAttributeResponses = false,
 }: TerminalProps, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
@@ -235,6 +237,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     term.loadAddon(webLinksAddon);
     term.loadAddon(searchAddon);
 
+    // Agent attach panes are views into existing tmux sessions. Consuming DA
+    // requests avoids xterm-generated identity replies being injected as input.
+    const deviceAttributeHandlers = suppressDeviceAttributeResponses
+      ? [
+          term.parser.registerCsiHandler({ final: 'c' }, () => true),
+          term.parser.registerCsiHandler({ prefix: '>', final: 'c' }, () => true),
+        ]
+      : [];
+
     termRef.current = term;
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
@@ -302,6 +313,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       dataListener.dispose();
       resizeListener.dispose();
       bellListener.dispose();
+      deviceAttributeHandlers.forEach(handler => handler.dispose());
       termEl.removeEventListener('wheel', wheelHandler);
       el.removeEventListener('mousedown', clickHandler);
       term.dispose();
@@ -310,7 +322,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       searchAddonRef.current = null;
     };
     // Re-run only when the session changes; all live callbacks are accessed via refs.
-  }, [sessionId, setFocusedSessionId]);
+  }, [sessionId, setFocusedSessionId, suppressDeviceAttributeResponses]);
 
   // Update font size
   useEffect(() => {

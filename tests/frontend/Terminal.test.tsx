@@ -10,11 +10,12 @@ const mocks = vi.hoisted(() => ({
   fitCalls: 0,
   openImmediately: false,
   resizeObserverCallback: undefined as (() => void) | undefined,
-  wsOptions: undefined as { onOpen?: () => void; onClose?: () => void } | undefined,
+  wsOptions: undefined as { onMessage?: (msg: unknown) => void; onOpen?: () => void; onClose?: () => void } | undefined,
+  terminal: undefined as { emitData: (data: string) => void } | undefined,
 }));
 
 vi.mock('@frontend/hooks/useWebSocket', () => ({
-  useWebSocket: vi.fn((options: { onOpen?: () => void; onClose?: () => void }) => {
+  useWebSocket: vi.fn((options: { onMessage?: (msg: unknown) => void; onOpen?: () => void; onClose?: () => void }) => {
     mocks.wsOptions = options;
     if (mocks.openImmediately) {
       options.onOpen?.();
@@ -29,9 +30,24 @@ vi.mock('@xterm/xterm', () => {
     rows = 24;
     options: Record<string, unknown>;
     private resizeListeners: Array<(size: { cols: number; rows: number }) => void> = [];
+    private dataListeners: Array<(data: string) => void> = [];
+    private csiHandlers: Array<{ id: { final: string; prefix?: string }; handler: () => boolean }> = [];
+    parser = {
+      registerCsiHandler: (id: { final: string; prefix?: string }, handler: () => boolean) => {
+        const entry = { id, handler };
+        this.csiHandlers.push(entry);
+        return {
+          dispose: vi.fn(() => {
+            const index = this.csiHandlers.indexOf(entry);
+            if (index !== -1) this.csiHandlers.splice(index, 1);
+          }),
+        };
+      },
+    };
 
     constructor(options: Record<string, unknown>) {
       this.options = options;
+      mocks.terminal = this;
     }
 
     loadAddon(addon: { activate?: (terminal: MockTerminal) => void }) {
@@ -40,7 +56,8 @@ vi.mock('@xterm/xterm', () => {
 
     open() {}
 
-    onData() {
+    onData(listener: (data: string) => void) {
+      this.dataListeners.push(listener);
       return { dispose: vi.fn() };
     }
 
@@ -57,14 +74,36 @@ vi.mock('@xterm/xterm', () => {
     focus() {}
     scrollToBottom() {}
     scrollToLine() {}
-    write(_data: string, callback?: () => void) { callback?.(); }
+    write(data: string, callback?: () => void) {
+      if (data.includes('\x1b[>c') && !this.dispatchCsi({ prefix: '>', final: 'c' })) {
+        this.emitData('\x1b[>0;276;0c');
+      }
+      if (data.includes('\x1b[c') && !this.dispatchCsi({ final: 'c' })) {
+        this.emitData('\x1b[?1;2c');
+      }
+      callback?.();
+    }
     refresh() {}
     dispose() {}
+
+    emitData(data: string) {
+      for (const listener of this.dataListeners) listener(data);
+    }
 
     emitResize(cols: number, rows: number) {
       this.cols = cols;
       this.rows = rows;
       for (const listener of this.resizeListeners) listener({ cols, rows });
+    }
+
+    private dispatchCsi(id: { final: string; prefix?: string }) {
+      for (let i = this.csiHandlers.length - 1; i >= 0; i--) {
+        const entry = this.csiHandlers[i];
+        if (entry.id.final === id.final && entry.id.prefix === id.prefix && entry.handler()) {
+          return true;
+        }
+      }
+      return false;
     }
   }
 
@@ -113,6 +152,7 @@ describe('Terminal', () => {
     mocks.openImmediately = false;
     mocks.resizeObserverCallback = undefined;
     mocks.wsOptions = undefined;
+    mocks.terminal = undefined;
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 800 });
     Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, value: 600 });
     globalThis.ResizeObserver = class ResizeObserver {
@@ -260,5 +300,34 @@ describe('Terminal', () => {
 
     expect(mocks.fitCalls).toBe(3);
     expect(mocks.send).toHaveBeenCalledWith({ type: 'resize', cols: 132, rows: 37 });
+  });
+
+  it('suppresses xterm device-attribute replies when requested', () => {
+    render(
+      <Terminal
+        sessionId="session-1"
+        fontSize={14}
+        state="connected"
+        autoScroll={true}
+        onStateChange={vi.fn()}
+        onViewerUpdate={vi.fn()}
+        onFocusGained={vi.fn()}
+        suppressDeviceAttributeResponses={true}
+      />,
+      { wrapper },
+    );
+
+    act(() => {
+      mocks.wsOptions?.onMessage?.({ type: 'output', data: '\x1b[>c' });
+      mocks.wsOptions?.onMessage?.({ type: 'output', data: '\x1b[c' });
+    });
+
+    expect(mocks.send).not.toHaveBeenCalled();
+
+    act(() => {
+      mocks.terminal?.emitData('a');
+    });
+
+    expect(mocks.send).toHaveBeenCalledWith({ type: 'input', data: 'a' });
   });
 });
