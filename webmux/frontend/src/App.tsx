@@ -9,7 +9,7 @@ import { CodexWorkspace } from './components/CodexWorkspace';
 import { AgentWorkspace } from './components/AgentWorkspace';
 import { RegisterDialog } from './components/RegisterDialog';
 import { InputBroadcastProvider } from './contexts/InputBroadcastContext';
-import { WorkspacePaneProvider, useWorkspacePane } from './contexts/WorkspacePaneContext';
+import { WorkspacePaneProvider, useWorkspacePane, type WorkspacePane } from './contexts/WorkspacePaneContext';
 import { api } from './utils/api';
 import type { NamedTheme } from './types';
 import { loadBundledThemes, loadGlobalTheme, saveGlobalTheme } from './utils/themes';
@@ -44,6 +44,12 @@ interface AuthenticatedAppProps {
   globalLockVersion: number;
 }
 
+const agentPanes = new Set<WorkspacePane>(['codexes', 'claudes', 'copilots']);
+
+function isAgentPane(pane: WorkspacePane): boolean {
+  return agentPanes.has(pane);
+}
+
 function AuthenticatedApp({
   auth,
   fontSize,
@@ -71,6 +77,22 @@ function AuthenticatedApp({
   globalLockVersion,
 }: AuthenticatedAppProps) {
   const { activePane } = useWorkspacePane();
+  const [mountedAgentPanes, setMountedAgentPanes] = useState<Set<WorkspacePane>>(() => new Set());
+
+  useEffect(() => {
+    if (!isAgentPane(activePane)) return;
+    setMountedAgentPanes(prev => {
+      if (prev.has(activePane)) return prev;
+      const next = new Set(prev);
+      next.add(activePane);
+      return next;
+    });
+  }, [activePane]);
+
+  const shouldMountAgentPane = useCallback(
+    (pane: WorkspacePane) => activePane === pane || mountedAgentPanes.has(pane),
+    [activePane, mountedAgentPanes],
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -113,35 +135,41 @@ function AuthenticatedApp({
         <div style={{ display: activePane === 'desktops' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
           <GraphicsWorkspace />
         </div>
-        <div style={{ display: activePane === 'codexes' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
-          <CodexWorkspace
-            fontSize={fontSize}
-            termCols={termCols}
-            termRows={termRows}
-            themes={themes}
-            globalTheme={globalTheme}
-          />
-        </div>
-        <div style={{ display: activePane === 'claudes' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
-          <AgentWorkspace
-            agentKind="claude"
-            fontSize={fontSize}
-            termCols={termCols}
-            termRows={termRows}
-            themes={themes}
-            globalTheme={globalTheme}
-          />
-        </div>
-        <div style={{ display: activePane === 'copilots' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
-          <AgentWorkspace
-            agentKind="copilot"
-            fontSize={fontSize}
-            termCols={termCols}
-            termRows={termRows}
-            themes={themes}
-            globalTheme={globalTheme}
-          />
-        </div>
+        {shouldMountAgentPane('codexes') && (
+          <div style={{ display: activePane === 'codexes' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
+            <CodexWorkspace
+              fontSize={fontSize}
+              termCols={termCols}
+              termRows={termRows}
+              themes={themes}
+              globalTheme={globalTheme}
+            />
+          </div>
+        )}
+        {shouldMountAgentPane('claudes') && (
+          <div style={{ display: activePane === 'claudes' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
+            <AgentWorkspace
+              agentKind="claude"
+              fontSize={fontSize}
+              termCols={termCols}
+              termRows={termRows}
+              themes={themes}
+              globalTheme={globalTheme}
+            />
+          </div>
+        )}
+        {shouldMountAgentPane('copilots') && (
+          <div style={{ display: activePane === 'copilots' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
+            <AgentWorkspace
+              agentKind="copilot"
+              fontSize={fontSize}
+              termCols={termCols}
+              termRows={termRows}
+              themes={themes}
+              globalTheme={globalTheme}
+            />
+          </div>
+        )}
       </div>
 
       {showRegister && (

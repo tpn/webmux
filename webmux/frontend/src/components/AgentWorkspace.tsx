@@ -87,6 +87,12 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
 
   const activeTheme = themes.find(theme => theme.name === globalTheme);
 
+  const deleteAgentSession = useCallback((sessionId: string) => {
+    api.deleteSession(sessionId).catch(err => {
+      console.error(`Failed to delete ${agentKind} session ${sessionId}:`, err);
+    });
+  }, [agentKind]);
+
   const loadSessions = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -117,12 +123,22 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
     try {
       const session = await api.attachAgentSession(agentKind, { name, cols: termCols, rows: termRows });
       if (attachRequestRef.current === requestId) {
-        setAttachedSession(session);
+        setAttachedSession(current => {
+          if (current && current.id !== session.id) {
+            deleteAgentSession(current.id);
+          }
+          return session;
+        });
       }
     } catch (err) {
       if (attachRequestRef.current === requestId) {
         setError((err as Error).message);
-        setAttachedSession(null);
+        setAttachedSession(current => {
+          if (current) {
+            deleteAgentSession(current.id);
+          }
+          return null;
+        });
         await loadSessions();
       }
     } finally {
@@ -130,15 +146,20 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
         setAttachLoading(false);
       }
     }
-  }, [agentKind, loadSessions, termCols, termRows]);
+  }, [agentKind, deleteAgentSession, loadSessions, termCols, termRows]);
 
   useEffect(() => {
     if (selectedName) {
       attachSelected(selectedName);
     } else {
-      setAttachedSession(null);
+      setAttachedSession(current => {
+        if (current) {
+          deleteAgentSession(current.id);
+        }
+        return null;
+      });
     }
-  }, [attachSelected, selectedName]);
+  }, [attachSelected, deleteAgentSession, selectedName]);
 
   const openScratch = useCallback(async () => {
     setError(null);

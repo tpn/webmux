@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 
 // Mock useAuth before importing App
 const mockAuth = {
@@ -123,7 +123,7 @@ describe('App', () => {
     });
   });
 
-  it('keeps agent workspaces mounted while their panes are hidden', async () => {
+  it('lazy-mounts agent workspaces after first activation and keeps them mounted while hidden', async () => {
     mockAuth.isLoading = false;
     mockAuth.isAuthenticated = true;
     mockAuth.authStatus = { mode: 'none', bootstrap_required: false };
@@ -131,10 +131,21 @@ describe('App', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(api.getAgentSessions).toHaveBeenCalledWith('codex');
-      expect(api.getAgentSessions).toHaveBeenCalledWith('claude');
-      expect(api.getAgentSessions).toHaveBeenCalledWith('copilot');
+      expect(screen.getByText('Click to add a session')).toBeDefined();
     });
+    expect(api.getAgentSessions).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Codexes' }));
+
+    await waitFor(() => {
+      expect(api.getAgentSessions).toHaveBeenCalledWith('codex');
+    });
+    expect(api.getAgentSessions).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Terminals' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Codexes' }));
+
+    expect(api.getAgentSessions).toHaveBeenCalledTimes(1);
   });
 
   it('loads config after authentication and applies terminal grid limits', async () => {

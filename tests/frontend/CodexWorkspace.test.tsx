@@ -99,6 +99,9 @@ describe('CodexWorkspace', () => {
     await waitFor(() => {
       expect(apiMock.attachAgentSession).toHaveBeenCalledWith('codex', { name: 'codex-b', cols: 120, rows: 40 });
     });
+    await waitFor(() => {
+      expect(apiMock.deleteSession).toHaveBeenCalledWith('codex-session-a');
+    });
     expect(await screen.findByTestId('terminal-codex-session-b')).toBeDefined();
   });
 
