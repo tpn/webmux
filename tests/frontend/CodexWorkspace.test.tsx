@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import type { Session } from '@frontend/types';
 import { CodexWorkspace } from '@frontend/components/CodexWorkspace';
 import { AgentWorkspace } from '@frontend/components/AgentWorkspace';
@@ -58,6 +58,14 @@ const defaultProps = {
   globalTheme: null,
 };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(res => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 describe('CodexWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -81,6 +89,10 @@ describe('CodexWorkspace', () => {
       expect(apiMock.attachAgentSession).toHaveBeenCalledWith('codex', { name: 'codex-a', cols: 120, rows: 40 });
     });
     expect(await screen.findByTestId('terminal-codex-session-1')).toBeDefined();
+    await waitFor(() => {
+      expect(apiMock.createAgentScratch).toHaveBeenCalledWith('codex', { selectedName: 'codex-a', cols: 60, rows: 40 });
+    });
+    expect(await screen.findByTestId('terminal-codex-scratch-1')).toBeDefined();
   });
 
   it('clicking a codex button requests attach for that session', async () => {
@@ -104,13 +116,10 @@ describe('CodexWorkspace', () => {
     expect(screen.getAllByText('codex-b').length).toBeGreaterThan(1);
   });
 
-  it('opens and closes a scratch shell in a side split', async () => {
+  it('opens a scratch shell by default and can close and reopen it', async () => {
     render(<CodexWorkspace {...defaultProps} />);
 
     await screen.findByTestId('terminal-codex-session-1');
-    expect(screen.getByTestId('codex-layout')).toHaveStyle('grid-template-columns: minmax(0, 1fr)');
-
-    fireEvent.click(screen.getByText('+ Shell'));
 
     await waitFor(() => {
       expect(apiMock.createAgentScratch).toHaveBeenCalledWith('codex', { selectedName: 'codex-a', cols: 60, rows: 40 });
@@ -124,6 +133,38 @@ describe('CodexWorkspace', () => {
       expect(apiMock.deleteSession).toHaveBeenCalledWith('codex-scratch-1');
     });
     expect(screen.getByTestId('codex-layout')).toHaveStyle('grid-template-columns: minmax(0, 1fr)');
+
+    fireEvent.click(screen.getByText('+ Shell'));
+
+    await waitFor(() => {
+      expect(apiMock.createAgentScratch).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByTestId('codex-layout')).toHaveStyle('grid-template-columns: minmax(0, 2fr) minmax(0, 1fr)');
+  });
+
+  it('does not auto-reopen a scratch shell that was opened manually while sessions were loading', async () => {
+    const sessions = deferred<{ name: string; windows: number; attached: number }[]>();
+    apiMock.getAgentSessions.mockReturnValue(sessions.promise);
+
+    render(<CodexWorkspace {...defaultProps} />);
+
+    fireEvent.click(screen.getByText('+ Shell'));
+    expect(await screen.findByTestId('terminal-codex-scratch-1')).toBeDefined();
+
+    await act(async () => {
+      sessions.resolve([{ name: 'codex-a', windows: 1, attached: 0 }]);
+    });
+    await waitFor(() => {
+      expect(apiMock.attachAgentSession).toHaveBeenCalledWith('codex', { name: 'codex-a', cols: 120, rows: 40 });
+    });
+
+    fireEvent.click(screen.getByTitle('Close scratch shell'));
+    await waitFor(() => {
+      expect(apiMock.deleteSession).toHaveBeenCalledWith('codex-scratch-1');
+    });
+    await act(async () => {});
+
+    expect(apiMock.createAgentScratch).toHaveBeenCalledTimes(1);
   });
 
   it('auto-selects a Claude session through the same workspace', async () => {
@@ -154,12 +195,10 @@ describe('CodexWorkspace', () => {
 
     expect(await screen.findByText('No Copilot sessions')).toBeDefined();
     expect(apiMock.attachAgentSession).not.toHaveBeenCalled();
-    expect(screen.getByTestId('copilot-layout')).toHaveStyle('grid-template-columns: minmax(0, 1fr)');
-
-    fireEvent.click(screen.getByText('+ Shell'));
 
     await waitFor(() => {
       expect(apiMock.createAgentScratch).toHaveBeenCalledWith('copilot', { selectedName: undefined, cols: 60, rows: 40 });
     });
+    expect(screen.getByTestId('copilot-layout')).toHaveStyle('grid-template-columns: minmax(0, 2fr) minmax(0, 1fr)');
   });
 });

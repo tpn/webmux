@@ -85,6 +85,7 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
   const [scratchLoading, setScratchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const attachRequestRef = useRef(0);
+  const autoScratchRequestedRef = useRef(false);
 
   const activeTheme = themes.find(theme => theme.name === globalTheme);
 
@@ -192,6 +193,14 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
 
   const showScratch = scratchVisible && scratchSession;
 
+  useEffect(() => {
+    if (loading || error || autoScratchRequestedRef.current) return;
+    autoScratchRequestedRef.current = true;
+    if (!scratchLoading && !showScratch) {
+      void openScratch();
+    }
+  }, [error, loading, openScratch, scratchLoading, showScratch]);
+
   return (
     <div style={styles.shell}>
       <div style={styles.sessionStrip}>
@@ -220,7 +229,12 @@ export function AgentWorkspace({ agentKind, fontSize, termCols, termRows, themes
         <button style={styles.stripButton} onClick={loadSessions} title={`Refresh ${agent.label} sessions`}>
           {'\u21bb'}
         </button>
-        <button style={styles.stripButton} onClick={openScratch} disabled={scratchLoading} title="Open scratch shell">
+        <button
+          style={styles.stripButton}
+          onClick={openScratch}
+          disabled={scratchLoading || Boolean(showScratch)}
+          title={showScratch ? 'Scratch shell open' : 'Open scratch shell'}
+        >
           + Shell
         </button>
       </div>

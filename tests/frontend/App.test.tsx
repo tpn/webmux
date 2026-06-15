@@ -90,6 +90,16 @@ describe('App', () => {
     vi.clearAllMocks();
     (api.getConfig as ReturnType<typeof vi.fn>).mockResolvedValue(defaultConfig);
     (api.getSessions as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (api.createAgentScratch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...mockSession,
+      id: 'codex-scratch-1',
+      transport: 'exec',
+      title: 'Scratch shell',
+      workspace: 'codexes',
+      agent_kind: 'codex',
+      agent_role: 'scratch',
+      agent_session_name: undefined,
+    });
     mockAuth.isAuthenticated = false;
     mockAuth.isLoading = true;
     mockAuth.authStatus = null;
@@ -140,12 +150,16 @@ describe('App', () => {
     await waitFor(() => {
       expect(api.getAgentSessions).toHaveBeenCalledWith('codex');
     });
+    await waitFor(() => {
+      expect(api.createAgentScratch).toHaveBeenCalledWith('codex', { selectedName: undefined, cols: 40, rows: 24 });
+    });
     expect(api.getAgentSessions).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Terminals' }));
     fireEvent.click(screen.getByRole('button', { name: 'Codexes' }));
 
     expect(api.getAgentSessions).toHaveBeenCalledTimes(1);
+    expect(api.createAgentScratch).toHaveBeenCalledTimes(1);
   });
 
   it('loads config after authentication and applies terminal grid limits', async () => {
