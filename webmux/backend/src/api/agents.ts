@@ -90,8 +90,19 @@ export function createAgentRouter(fixedKind?: string): Router {
 
     try {
       const { selectedName } = req.body as { selectedName?: string };
+      if (selectedName !== undefined && typeof selectedName !== 'string') {
+        res.status(400).json({ error: 'selectedName must be a string' });
+        return;
+      }
       const { cols, rows } = parseTermSize(req.body as { cols?: unknown; rows?: unknown });
-      const cwd = selectedName ? await agentService.getPaneCurrentPath(config.kind, selectedName) : undefined;
+      let cwd: string | undefined;
+      if (selectedName) {
+        if (!(await agentService.hasSession(config.kind, selectedName))) {
+          res.status(404).json({ error: `${config.label} session not found` });
+          return;
+        }
+        cwd = await agentService.getPaneCurrentPath(config.kind, selectedName);
+      }
       const result = await sessionBroker.ensureAgentScratch(getOwner(req), config.kind, config.workspace, cols, rows, cwd);
       res.status(result.created ? 201 : 200).json(result.session);
     } catch (err) {

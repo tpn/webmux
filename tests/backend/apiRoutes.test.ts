@@ -269,9 +269,13 @@ describe('API Routes', () => {
           agent_kind: 'codex',
           agent_role: 'scratch',
           codex_role: 'scratch',
+          title: 'Hidden agent shell',
+          persistent: false,
         });
 
       expect(res.status).toBe(201);
+      expect(res.body.title).toBe('box.example.com:22');
+      expect(res.body.persistent).toBe(true);
       expect(res.body.exec_argv).toBeUndefined();
       expect(res.body.exec_cwd).toBeUndefined();
       expect(res.body.workspace).toBeUndefined();

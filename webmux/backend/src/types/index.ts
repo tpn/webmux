@@ -175,8 +175,6 @@ export interface CreateSessionRequest {
   template_id?: string;
   // Optional: command to run immediately after connection (injected into PTY)
   initial_cmd?: string;
-  title?: string;
-  persistent?: boolean;
 }
 
 export interface VncSession {

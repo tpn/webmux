@@ -32,6 +32,8 @@ function agentSessionName(session: Session) {
 }
 
 interface InternalCreateSessionOptions {
+  title?: string;
+  persistent?: boolean;
   execArgv?: string[];
   execCwd?: string;
   workspace?: WorkspaceName;
@@ -159,8 +161,8 @@ export class SessionBroker extends EventEmitter {
       state: 'connecting',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      title: req.title || (transport === 'exec' ? `${hostname}:${port}` : `${req.username}@${hostname}`),
-      persistent: req.persistent ?? true,
+      title: internal.title ?? (transport === 'exec' ? `${hostname}:${port}` : `${req.username}@${hostname}`),
+      persistent: internal.persistent ?? true,
       minimized: false,
       workspace: internal.workspace,
       agent_kind: agentKind,
@@ -398,9 +400,9 @@ export class SessionBroker extends EventEmitter {
       rows,
       row: 0,
       col: 0,
+    }, owner, {
       title: name,
       persistent: false,
-    }, owner, {
       execArgv,
       workspace,
       agentKind: kind,
@@ -454,9 +456,9 @@ export class SessionBroker extends EventEmitter {
       rows,
       row: 0,
       col: 1,
+    }, owner, {
       title: 'Scratch shell',
       persistent: false,
-    }, owner, {
       execArgv,
       execCwd: cwd,
       workspace,

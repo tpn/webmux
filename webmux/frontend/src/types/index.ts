@@ -114,8 +114,6 @@ export interface CreateSessionRequest {
   rows?: number;
   row?: number;
   col?: number;
-  title?: string;
-  persistent?: boolean;
 }
 
 export interface AgentTmuxSession {

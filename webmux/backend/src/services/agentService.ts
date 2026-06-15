@@ -41,6 +41,12 @@ const CONFIGS: Record<AgentKind, AgentConfig> = {
   },
 };
 
+function isNoTmuxServerError(err: unknown): boolean {
+  const error = err as NodeJS.ErrnoException & { stderr?: string };
+  const text = `${error.message ?? ''}\n${error.stderr ?? ''}`.toLowerCase();
+  return text.includes('no server running');
+}
+
 export class AgentService {
   getConfig(kind: string): AgentConfig | undefined {
     return CONFIGS[kind as AgentKind];
@@ -64,8 +70,9 @@ export class AgentService {
 
   private execFileOutput(command: string, args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
-      execFile(command, args, { encoding: 'utf8' }, (err, stdout) => {
+      execFile(command, args, { encoding: 'utf8' }, (err, stdout, stderr) => {
         if (err) {
+          (err as NodeJS.ErrnoException & { stderr?: string }).stderr = String(stderr ?? '');
           reject(err);
           return;
         }
@@ -89,7 +96,8 @@ export class AgentService {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         throw new Error('tmux is not installed');
       }
-      return [];
+      if (isNoTmuxServerError(err)) return [];
+      throw err;
     }
   }
 

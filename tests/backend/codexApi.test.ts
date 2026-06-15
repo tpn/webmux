@@ -208,12 +208,30 @@ describe('Codex API Routes', () => {
   });
 
   it('returns an empty Copilot session list when the tmux socket has no server', async () => {
-    mockTmuxLists({ copilot: new Error('no server') });
+    mockTmuxLists({ copilot: new Error('no server running on /tmp/tmux-1000/copilot') });
 
     const res = await request(app).get('/api/agents/copilot/sessions');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
+  });
+
+  it('returns 503 when listing agent sessions fails unexpectedly', async () => {
+    mockTmuxLists({ copilot: new Error('permission denied') });
+
+    const res = await request(app).get('/api/agents/copilot/sessions');
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toContain('permission denied');
+  });
+
+  it('rejects scratch shells for a selected session not present in tmux list', async () => {
+    mockTmuxList('codex-a\t1\t0\n');
+
+    const res = await request(app).post('/api/agents/codex/scratch').send({ selectedName: 'missing' });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Codex session not found');
   });
 
   it('creates and reuses Claude attach sessions without exposing them through normal sessions', async () => {
