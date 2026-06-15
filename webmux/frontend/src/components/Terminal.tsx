@@ -66,6 +66,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const wsHandleRef = useRef<ReturnType<typeof useWebSocket> | null>(null);
+  const socketOpenRef = useRef(false);
   const userScrolledRef = useRef(false);
   const autoScrollRef = useRef(autoScroll);
   const [showSearch, setShowSearch] = useState(false);
@@ -106,6 +107,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   // broadcastMode from a ref internally — use it directly without a wrapper ref.
   const routeInputRef = useRef(routeInput);
 
+  const sendCurrentSize = useCallback(() => {
+    const term = termRef.current;
+    if (!term) return;
+    wsHandleRef.current?.send({ type: 'resize', cols: term.cols, rows: term.rows });
+  }, []);
+
   const handleMessage = useCallback((msg: WebSocketMessage) => {
     switch (msg.type) {
       case 'output':
@@ -141,8 +148,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   const wsHandle = useWebSocket({
     sessionId,
     onMessage: handleMessage,
-    onOpen: () => onStateChangeRef.current('connected'),
-    onClose: () => onStateChangeRef.current('disconnected'),
+    onOpen: () => {
+      socketOpenRef.current = true;
+      onStateChangeRef.current('connected');
+      sendCurrentSize();
+    },
+    onClose: () => {
+      socketOpenRef.current = false;
+      onStateChangeRef.current('disconnected');
+    },
   });
 
   useEffect(() => {
@@ -183,12 +197,19 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     term.loadAddon(fitAddon);
     term.loadAddon(webLinksAddon);
     term.loadAddon(searchAddon);
+
     term.open(containerRef.current);
     fitAddon.fit();
 
     termRef.current = term;
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
+    if (socketOpenRef.current) {
+      sendCurrentSize();
+    }
+    const resizeListener = term.onResize(({ cols, rows }: { cols: number; rows: number }) => {
+      wsHandleRef.current?.send({ type: 'resize', cols, rows });
+    });
     searchAddon.onDidChangeResults(({ resultIndex, resultCount }) => {
       setSearchIndex(resultIndex);
       setSearchCount(resultCount);
@@ -197,10 +218,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     // Route input through the broadcast context instead of sending directly
     const dataListener = term.onData((data: string) => {
       routeInputRef.current(sessionId, data);
-    });
-
-    const resizeListener = term.onResize(({ cols, rows }: { cols: number; rows: number }) => {
-      wsHandleRef.current?.send({ type: 'resize', cols, rows });
     });
 
     const bellListener = term.onBell(() => {
@@ -257,7 +274,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
   // Update font size
   useEffect(() => {
-    if (termRef.current) {
+    if (termRef.current && termRef.current.options.fontSize !== fontSize) {
       termRef.current.options.fontSize = fontSize;
       fitAddonRef.current?.fit();
     }
