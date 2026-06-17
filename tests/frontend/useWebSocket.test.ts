@@ -20,6 +20,7 @@ class MockWebSocket {
   closeCalled = false;
   closeCode?: number;
   sentMessages: string[] = [];
+  bufferedAmount = 0;
 
   constructor(url: string) {
     this.url = url;
@@ -118,6 +119,15 @@ describe('useWebSocket', () => {
     expect(MockWebSocket.instances[0].sentMessages).toEqual([
       JSON.stringify({ type: 'input', data: 'test' }),
     ]);
+  });
+
+  it('reports the current websocket buffered amount', async () => {
+    const useWebSocket = await importHook();
+    const { result } = renderHook(() =>
+      useWebSocket({ sessionId: 's1', onMessage: vi.fn() })
+    );
+    MockWebSocket.instances[0].bufferedAmount = 1234;
+    expect(result.current.bufferedAmount()).toBe(1234);
   });
 
   it('calls onClose and reconnects with backoff on abnormal close', async () => {

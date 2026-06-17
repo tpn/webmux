@@ -8,6 +8,7 @@ import { GraphicsWorkspace } from './components/GraphicsWorkspace';
 import { CodexWorkspace } from './components/CodexWorkspace';
 import { AgentWorkspace } from './components/AgentWorkspace';
 import { RegisterDialog } from './components/RegisterDialog';
+import { TerminalDebugPanel } from './components/TerminalDebugPanel';
 import { InputBroadcastProvider } from './contexts/InputBroadcastContext';
 import { WorkspacePaneProvider, useWorkspacePane, type WorkspacePane } from './contexts/WorkspacePaneContext';
 import { api } from './utils/api';
@@ -307,6 +308,7 @@ export default function App() {
           onGlobalLockSync={setGlobalLock}
           globalLockVersion={globalLockVersion}
         />
+        <TerminalDebugPanel />
       </WorkspacePaneProvider>
     </InputBroadcastProvider>
   );

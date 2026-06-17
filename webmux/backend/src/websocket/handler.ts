@@ -78,6 +78,15 @@ export function setupWebSocket(wss: WebSocketServer): void {
         case 'input':
           if (msg.data) {
             sessionBroker.sendInput(sessionId, msg.data);
+            if (typeof msg.debug_seq === 'number') {
+              presenceService.sendToViewer(viewerId, {
+                type: 'debug',
+                session_id: sessionId,
+                debug_seq: msg.debug_seq,
+                debug_phase: 'input-written',
+                server_time: Date.now(),
+              });
+            }
           }
           break;
 

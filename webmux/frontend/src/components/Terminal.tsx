@@ -7,6 +7,7 @@ import '@xterm/xterm/css/xterm.css';
 import type { WebSocketMessage, ConnectionState, TerminalTheme } from '../types';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useInputBroadcast } from '../contexts/InputBroadcastContext';
+import { nextTerminalDebugSeq, recordTerminalDebug, terminalDebugNow } from '../utils/terminalDebug';
 
 export const DEFAULT_TERMINAL_THEME: TerminalTheme = {
   background: '#0d0d1a',
@@ -90,7 +91,16 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     },
     isAtBottom: () => !userScrolledRef.current,
     sendInput: (data: string) => {
-      wsHandleRef.current?.send({ type: 'input', data });
+      const debugSeq = nextTerminalDebugSeq();
+      recordTerminalDebug('input-send', sessionId, {
+        chars: data.length,
+        bufferedAmount: wsHandleRef.current?.bufferedAmount?.() ?? 0,
+        source: 'imperative',
+        debugSeq,
+      });
+      const message: WebSocketMessage = { type: 'input', data };
+      if (debugSeq !== undefined) message.debug_seq = debugSeq;
+      wsHandleRef.current?.send(message);
     },
     focus: () => {
       termRef.current?.focus();
@@ -156,14 +166,27 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     switch (msg.type) {
       case 'output':
         if (msg.data && termRef.current) {
+          const output = msg.data;
+          const startedAt = terminalDebugNow();
+          recordTerminalDebug('output-message', sessionId, { chars: output.length });
           const shouldScroll = autoScrollRef.current && !userScrolledRef.current;
           if (shouldScroll) {
-            termRef.current.write(msg.data, () => {
+            termRef.current.write(output, () => {
+              recordTerminalDebug('output-write-end', sessionId, {
+                chars: output.length,
+                durationMs: Math.round(terminalDebugNow() - startedAt),
+                autoScroll: true,
+              });
               termRef.current?.scrollToBottom();
             });
           } else {
             const savedViewport = termRef.current.buffer.active.viewportY;
-            termRef.current.write(msg.data, () => {
+            termRef.current.write(output, () => {
+              recordTerminalDebug('output-write-end', sessionId, {
+                chars: output.length,
+                durationMs: Math.round(terminalDebugNow() - startedAt),
+                autoScroll: false,
+              });
               termRef.current?.scrollToLine(savedViewport);
             });
           }
@@ -179,10 +202,17 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       case 'focus':
         onViewerUpdateRef.current(msg.viewer_count ?? 0, msg.focus_owner);
         break;
+      case 'debug':
+        recordTerminalDebug('server-debug', sessionId, {
+          debugSeq: msg.debug_seq,
+          phase: msg.debug_phase,
+          serverTime: msg.server_time,
+        });
+        break;
       default:
         break;
     }
-  }, []);
+  }, [sessionId]);
 
   const wsHandle = useWebSocket({
     sessionId,
@@ -205,7 +235,16 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   // Register this terminal's send function with the broadcast context
   useEffect(() => {
     const sendInput = (data: string) => {
-      wsHandleRef.current?.send({ type: 'input', data });
+      const debugSeq = nextTerminalDebugSeq();
+      recordTerminalDebug('input-send', sessionId, {
+        chars: data.length,
+        bufferedAmount: wsHandleRef.current?.bufferedAmount?.() ?? 0,
+        source: 'broadcast-register',
+        debugSeq,
+      });
+      const message: WebSocketMessage = { type: 'input', data };
+      if (debugSeq !== undefined) message.debug_seq = debugSeq;
+      wsHandleRef.current?.send(message);
     };
     registerSend(sessionId, sendInput);
     return () => unregisterSend(sessionId);
@@ -267,6 +306,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
     // Route input through the broadcast context instead of sending directly
     const dataListener = term.onData((data: string) => {
+      recordTerminalDebug('input-data', sessionId, { chars: data.length });
       routeInputRef.current(sessionId, data);
     });
 

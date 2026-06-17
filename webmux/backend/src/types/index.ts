@@ -134,7 +134,7 @@ export interface Viewer {
 }
 
 export interface WebSocketMessage {
-  type: 'input' | 'resize' | 'output' | 'status' | 'focus' | 'viewer_join' | 'viewer_leave' | 'error';
+  type: 'input' | 'resize' | 'output' | 'status' | 'focus' | 'viewer_join' | 'viewer_leave' | 'error' | 'debug';
   session_id?: string;
   data?: string;
   cols?: number;
@@ -144,6 +144,9 @@ export interface WebSocketMessage {
   viewer_count?: number;
   focus_owner?: string;
   message?: string;
+  debug_seq?: number;
+  debug_phase?: string;
+  server_time?: number;
 }
 
 // Session template — pre-configured session setup (e.g. "claude-cli")

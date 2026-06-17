@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { buildWsUrl } from '../utils/api';
 import type { WebSocketMessage } from '../types';
+import { recordTerminalDebug } from '../utils/terminalDebug';
 
 interface UseWebSocketOptions {
   sessionId: string;
@@ -11,6 +12,7 @@ interface UseWebSocketOptions {
 
 export interface WebSocketHandle {
   send: (msg: WebSocketMessage) => void;
+  bufferedAmount: () => number;
   close: () => void;
 }
 
@@ -45,11 +47,17 @@ export function useWebSocket(options: UseWebSocketOptions): WebSocketHandle {
 
       ws.onopen = () => {
         attemptRef.current = 0;
+        recordTerminalDebug('ws-open', sessionId);
         onOpenRef.current?.();
       };
 
       ws.onclose = (event) => {
         if (closedRef.current) return;
+        recordTerminalDebug('ws-close', sessionId, {
+          code: event.code,
+          reason: event.reason,
+          bufferedAmount: ws.bufferedAmount,
+        });
         onCloseRef.current?.();
         // 1000 = intentional close (component unmount, session deleted)
         if (event.code === 1000) return;
@@ -58,13 +66,17 @@ export function useWebSocket(options: UseWebSocketOptions): WebSocketHandle {
         reconnectTimerRef.current = setTimeout(connect, delay);
       };
 
-      ws.onerror = (e) => console.error('WebSocket error', e);
+      ws.onerror = (e) => {
+        recordTerminalDebug('ws-error', sessionId, { bufferedAmount: ws.bufferedAmount });
+        console.error('WebSocket error', e);
+      };
 
       ws.onmessage = (event: MessageEvent<string>) => {
         try {
           const msg = JSON.parse(event.data) as WebSocketMessage;
           onMessageRef.current(msg);
         } catch {
+          recordTerminalDebug('ws-malformed-message', sessionId, { chars: event.data.length });
           // ignore malformed messages
         }
       };
@@ -89,6 +101,8 @@ export function useWebSocket(options: UseWebSocketOptions): WebSocketHandle {
     }
   }, []);
 
+  const bufferedAmount = useCallback(() => wsRef.current?.bufferedAmount ?? 0, []);
+
   const close = useCallback(() => {
     closedRef.current = true;
     if (reconnectTimerRef.current) {
@@ -98,5 +112,5 @@ export function useWebSocket(options: UseWebSocketOptions): WebSocketHandle {
     wsRef.current?.close(1000);
   }, []);
 
-  return { send, close };
+  return { send, bufferedAmount, close };
 }

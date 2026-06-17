@@ -223,6 +223,24 @@ describe('WebSocket Integration', () => {
     client.ws.close();
   });
 
+  it('acks debug input messages after writing them to the PTY', async () => {
+    const session = await sessionBroker.create({ username: 'user', hostname: 'test.example.com' });
+    const client = await createClient(session.id);
+    await client.waitFor(m => m.type === 'status');
+
+    const pty = transportLauncher.getHandle(session.id);
+    const writeSpy = jest.spyOn(pty!, 'write');
+
+    const debugPromise = client.waitFor(m => m.type === 'debug' && m.debug_seq === 42);
+    client.ws.send(JSON.stringify({ type: 'input', data: 'pwd\n', debug_seq: 42 }));
+    const msg = await debugPromise;
+
+    expect(writeSpy).toHaveBeenCalledWith('pwd\n');
+    expect(msg.debug_phase).toBe('input-written');
+    expect(typeof msg.server_time).toBe('number');
+    client.ws.close();
+  });
+
   it('handles resize messages', async () => {
     const session = await sessionBroker.create({ username: 'user', hostname: 'test.example.com' });
     const client = await createClient(session.id);
