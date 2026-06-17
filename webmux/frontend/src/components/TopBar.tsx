@@ -9,8 +9,10 @@ const HOST_SWITCHES = [
   { key: 'dgx', publicPrefix: 'dgx-webmux' },
   { key: 'leopard', publicPrefix: 'leopard-webmux' },
   { key: 'nv1', publicPrefix: 'nv1-webmux' },
+  { key: 'pi', publicPrefix: 'pi-webmux' },
   { key: 'spark', publicPrefix: 'spark-webmux' },
-];
+  { key: 'viper', publicPrefix: 'viper-webmux' },
+].sort((a, b) => a.key.localeCompare(b.key));
 
 function getHostSwitchContext() {
   const hostname = window.location.hostname.toLowerCase();
@@ -397,7 +399,7 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 'max-content',
   },
   rightWithHostSwitcher: {
-    paddingRight: 214,
+    paddingRight: 340,
   },
   fontControls: {
     display: 'flex',
@@ -481,6 +483,9 @@ const styles: Record<string, React.CSSProperties> = {
     top: '50%',
     transform: 'translateY(-50%)',
     zIndex: 2,
+    maxWidth: 'calc(100% - 32px)',
+    overflowX: 'auto',
+    scrollbarWidth: 'none',
   },
   hostSwitchButton: {
     background: '#1a1a3a',

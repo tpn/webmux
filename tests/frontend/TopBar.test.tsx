@@ -152,14 +152,18 @@ describe('TopBar', () => {
         'dgx',
         'leopard',
         'nv1',
+        'pi',
         'spark',
+        'viper',
       ]);
 
       expect(screen.getByTestId('host-switch-current')).toHaveTextContent('nv1');
       expect(screen.getByTestId('host-switch-current').tagName.toLowerCase()).toBe('span');
       expect(screen.getByRole('link', { name: 'dgx' })).toHaveAttribute('href', 'https://dgx-webmux.trent.me/');
       expect(screen.getByRole('link', { name: 'leopard' })).toHaveAttribute('href', 'https://leopard-webmux.trent.me/');
+      expect(screen.getByRole('link', { name: 'pi' })).toHaveAttribute('href', 'https://pi-webmux.trent.me/');
       expect(screen.getByRole('link', { name: 'spark' })).toHaveAttribute('href', 'https://spark-webmux.trent.me/');
+      expect(screen.getByRole('link', { name: 'viper' })).toHaveAttribute('href', 'https://viper-webmux.trent.me/');
     });
   });
 
@@ -171,6 +175,8 @@ describe('TopBar', () => {
       expect(screen.getByRole('link', { name: 'dgx' })).toHaveAttribute('href', 'https://dgx-webmux.tpn.nyc/');
       expect(screen.getByRole('link', { name: 'leopard' })).toHaveAttribute('href', 'https://leopard-webmux.tpn.nyc/');
       expect(screen.getByRole('link', { name: 'nv1' })).toHaveAttribute('href', 'https://nv1-webmux.tpn.nyc/');
+      expect(screen.getByRole('link', { name: 'pi' })).toHaveAttribute('href', 'https://pi-webmux.tpn.nyc/');
+      expect(screen.getByRole('link', { name: 'viper' })).toHaveAttribute('href', 'https://viper-webmux.tpn.nyc/');
     });
   });
 });
