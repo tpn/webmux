@@ -99,6 +99,7 @@ describe('TopBar', () => {
     render(<TopBar {...defaultTopBarProps()} />, { wrapper });
     expect(screen.getByText('Terminals')).toBeDefined();
     expect(screen.getByText('Desktops')).toBeDefined();
+    expect(screen.getByText('Agents')).toBeDefined();
     expect(screen.getByText('Codexes')).toBeDefined();
     expect(screen.getByText('Claudes')).toBeDefined();
     expect(screen.getByText('Copilots')).toBeDefined();
@@ -154,6 +155,7 @@ describe('TopBar', () => {
         'nv1',
         'pi',
         'spark',
+        'tiger',
         'viper',
       ]);
 
@@ -163,6 +165,7 @@ describe('TopBar', () => {
       expect(screen.getByRole('link', { name: 'leopard' })).toHaveAttribute('href', 'https://leopard-webmux.trent.me/');
       expect(screen.getByRole('link', { name: 'pi' })).toHaveAttribute('href', 'https://pi-webmux.trent.me/');
       expect(screen.getByRole('link', { name: 'spark' })).toHaveAttribute('href', 'https://spark-webmux.trent.me/');
+      expect(screen.getByRole('link', { name: 'tiger' })).toHaveAttribute('href', 'https://tiger-webmux.trent.me/');
       expect(screen.getByRole('link', { name: 'viper' })).toHaveAttribute('href', 'https://viper-webmux.trent.me/');
     });
   });
@@ -176,6 +179,7 @@ describe('TopBar', () => {
       expect(screen.getByRole('link', { name: 'leopard' })).toHaveAttribute('href', 'https://leopard-webmux.tpn.nyc/');
       expect(screen.getByRole('link', { name: 'nv1' })).toHaveAttribute('href', 'https://nv1-webmux.tpn.nyc/');
       expect(screen.getByRole('link', { name: 'pi' })).toHaveAttribute('href', 'https://pi-webmux.tpn.nyc/');
+      expect(screen.getByRole('link', { name: 'tiger' })).toHaveAttribute('href', 'https://tiger-webmux.tpn.nyc/');
       expect(screen.getByRole('link', { name: 'viper' })).toHaveAttribute('href', 'https://viper-webmux.tpn.nyc/');
     });
   });

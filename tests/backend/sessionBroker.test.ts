@@ -24,6 +24,8 @@ describe('SessionBroker', () => {
     jest.resetModules();
     ({ SessionBroker } = require('@backend/services/sessionBroker'));
     ({ transportLauncher } = require('@backend/services/transportLauncher'));
+    (SessionBroker as unknown as Record<string, number>).AGENT_ATTACH_REPLAY_SUPPRESS_MS = 1500;
+    (SessionBroker as unknown as Record<string, number>).AGENT_STATUS_FLUSH_DEBOUNCE_MS = 1;
   });
 
   afterEach(() => {
@@ -34,6 +36,23 @@ describe('SessionBroker', () => {
     }
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  function encodedStatusName(name: string) {
+    return Buffer.from(name, 'utf8')
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
+  }
+
+  function readAgentStatus(kind: string, name: string) {
+    const file = path.join(tmpDir, 'data', 'agent-status', kind, `${encodedStatusName(name)}.json`);
+    return JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+  }
+
+  function sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
   it('initializes with no sessions', async () => {
     const broker = new SessionBroker();
@@ -245,6 +264,134 @@ describe('SessionBroker', () => {
     const currentHandle = transportLauncher.getHandle(first.session.id) as unknown as { emit: (event: string, data: unknown) => void };
     currentHandle.emit('exit', { exitCode: 0 });
     expect(broker.get(first.session.id)!.state).toBe('disconnected');
+  });
+
+  it('does not resize or touch updated_at when reattaching the same agent session at the same size', async () => {
+    const broker = new SessionBroker();
+    await broker.initialize();
+    const first = await broker.ensureAgentAttach(
+      'anonymous',
+      'codex',
+      'codexes',
+      'codex-a',
+      80,
+      24,
+      ['tmux', '-L', 'codex', 'attach-session', '-t', 'codex-a'],
+    );
+    first.session.updated_at = '2026-06-17T20:00:00.000Z';
+    const handle = transportLauncher.getHandle(first.session.id)!;
+    const resizeSpy = jest.spyOn(handle, 'resize');
+
+    const second = await broker.ensureAgentAttach(
+      'anonymous',
+      'codex',
+      'codexes',
+      'codex-a',
+      80,
+      24,
+      ['tmux', '-L', 'codex', 'attach-session', '-t', 'codex-a'],
+    );
+
+    expect(second.session.id).toBe(first.session.id);
+    expect(resizeSpy).not.toHaveBeenCalled();
+    expect(second.session.updated_at).toBe('2026-06-17T20:00:00.000Z');
+  });
+
+  it('does not record agent output metadata from tmux attach replay', async () => {
+    const broker = new SessionBroker();
+    await broker.initialize();
+    const { session } = await broker.ensureAgentAttach(
+      'anonymous',
+      'codex',
+      'codexes',
+      'codex-a',
+      80,
+      24,
+      ['tmux', '-L', 'codex', 'attach-session', '-t', 'codex-a'],
+    );
+    const handle = transportLauncher.getHandle(session.id) as unknown as { emit: (event: string, data: unknown) => void };
+
+    handle.emit('data', 'tmux screen replay');
+    await sleep(25);
+
+    expect(fs.existsSync(path.join(tmpDir, 'data', 'agent-status', 'codex'))).toBe(false);
+  });
+
+  it('records live agent output metadata after tmux attach replay', async () => {
+    (SessionBroker as unknown as Record<string, number>).AGENT_ATTACH_REPLAY_SUPPRESS_MS = 1;
+    const broker = new SessionBroker();
+    await broker.initialize();
+    const { session } = await broker.ensureAgentAttach(
+      'anonymous',
+      'codex',
+      'codexes',
+      'codex-a',
+      80,
+      24,
+      ['tmux', '-L', 'codex', 'attach-session', '-t', 'codex-a'],
+    );
+    const handle = transportLauncher.getHandle(session.id) as unknown as { emit: (event: string, data: unknown) => void };
+
+    await sleep(5);
+    handle.emit('data', 'live agent output');
+    await sleep(25);
+
+    expect(readAgentStatus('codex', 'codex-a')).toMatchObject({
+      kind: 'codex',
+      name: 'codex-a',
+      status: 'working',
+      source: 'webmux',
+      last_output_source: 'live',
+    });
+    expect(typeof readAgentStatus('codex', 'codex-a').last_output_at).toBe('string');
+  });
+
+  it('serializes live agent status writes and coalesces output bursts', async () => {
+    (SessionBroker as unknown as Record<string, number>).AGENT_ATTACH_REPLAY_SUPPRESS_MS = 1;
+    (SessionBroker as unknown as Record<string, number>).AGENT_STATUS_FLUSH_DEBOUNCE_MS = 1;
+    const { agentService } = require('@backend/services/agentService');
+    let activeWrites = 0;
+    let maxActiveWrites = 0;
+    const recordSpy = jest.spyOn(agentService, 'recordStatus').mockImplementation(async () => {
+      activeWrites += 1;
+      maxActiveWrites = Math.max(maxActiveWrites, activeWrites);
+      await sleep(20);
+      activeWrites -= 1;
+    });
+
+    try {
+      const broker = new SessionBroker();
+      await broker.initialize();
+      const { session } = await broker.ensureAgentAttach(
+        'anonymous',
+        'codex',
+        'codexes',
+        'codex-a',
+        80,
+        24,
+        ['tmux', '-L', 'codex', 'attach-session', '-t', 'codex-a'],
+      );
+      const handle = transportLauncher.getHandle(session.id) as unknown as { emit: (event: string, data: unknown) => void };
+
+      await sleep(5);
+      handle.emit('data', 'first live output');
+      await sleep(5);
+      handle.emit('data', 'second live output');
+      handle.emit('data', 'third live output');
+      await sleep(80);
+
+      expect(recordSpy).toHaveBeenCalledTimes(2);
+      expect(maxActiveWrites).toBe(1);
+      expect(recordSpy.mock.calls[0][0]).toBe('codex');
+      expect(recordSpy.mock.calls[0][1]).toBe('codex-a');
+      expect(recordSpy.mock.calls[1][2]).toMatchObject({
+        status: 'working',
+        source: 'webmux',
+        last_output_source: 'live',
+      });
+    } finally {
+      recordSpy.mockRestore();
+    }
   });
 
   it('stores key_id on session', async () => {

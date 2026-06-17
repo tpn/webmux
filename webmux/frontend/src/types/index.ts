@@ -2,8 +2,10 @@ export type TransportType = 'ssh' | 'mosh' | 'exec';
 export type SessionKind = 'terminal' | 'vnc' | 'rdp';
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
 export type AgentKind = 'codex' | 'claude' | 'copilot';
+export type AgentRuntimeStatus = 'waiting' | 'working' | 'unknown' | 'stale';
+export type AgentStatusSource = 'hook' | 'tmux' | 'webmux' | 'none';
 export type AgentWorkspaceName = 'codexes' | 'claudes' | 'copilots';
-export type WorkspaceName = 'terminals' | AgentWorkspaceName;
+export type WorkspaceName = 'terminals' | 'agents' | AgentWorkspaceName;
 export type AgentSessionRole = 'attach' | 'scratch';
 export type CodexSessionRole = AgentSessionRole;
 
@@ -121,8 +123,14 @@ export interface CreateSessionRequest {
 
 export interface AgentTmuxSession {
   name: string;
+  kind: AgentKind;
+  display_name: string;
   windows: number;
   attached: number;
+  created_at?: string;
+  last_output_at?: string;
+  status: AgentRuntimeStatus;
+  status_source: AgentStatusSource;
 }
 
 export interface KeyEntry {

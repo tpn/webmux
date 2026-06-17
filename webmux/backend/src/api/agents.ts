@@ -132,6 +132,15 @@ export function createAgentRouter(fixedKind?: string): Router {
   return agentRouter;
 }
 
+router.get('/sessions', requireAuth, requireAgentAccess, async (_req: Request, res: Response) => {
+  try {
+    res.json(await agentService.listAllSessions());
+  } catch (err) {
+    console.error('Agent list error:', err);
+    res.status(503).json({ error: 'Failed to list agent sessions' });
+  }
+});
+
 router.use(createAgentRouter());
 
 export default router;

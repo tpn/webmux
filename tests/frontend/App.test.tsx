@@ -33,6 +33,7 @@ vi.mock('@frontend/utils/api', () => ({
     getKeys: vi.fn().mockResolvedValue([]),
     getAuthStatus: vi.fn().mockResolvedValue({ mode: 'none', bootstrap_required: false }),
     updateConfig: vi.fn().mockResolvedValue({}),
+    getAllAgentSessions: vi.fn().mockResolvedValue([]),
     getAgentSessions: vi.fn().mockResolvedValue([]),
     attachAgentSession: vi.fn(),
     createAgentScratch: vi.fn(),
@@ -90,6 +91,8 @@ describe('App', () => {
     vi.clearAllMocks();
     (api.getConfig as ReturnType<typeof vi.fn>).mockResolvedValue(defaultConfig);
     (api.getSessions as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (api.getAllAgentSessions as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (api.getAgentSessions as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     (api.createAgentScratch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ...mockSession,
       id: 'codex-scratch-1',
@@ -129,11 +132,11 @@ describe('App', () => {
     mockAuth.authStatus = { mode: 'none', bootstrap_required: false };
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText('No Codex sessions')).toBeDefined();
+      expect(screen.getByText('No agent sessions')).toBeDefined();
     });
   });
 
-  it('lands on Codexes and keeps that workspace mounted after switching panes', async () => {
+  it('lands on Agents and keeps that workspace mounted after switching panes', async () => {
     mockAuth.isLoading = false;
     mockAuth.isAuthenticated = true;
     mockAuth.authStatus = { mode: 'none', bootstrap_required: false };
@@ -141,19 +144,35 @@ describe('App', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(api.getAgentSessions).toHaveBeenCalledWith('codex');
+      expect(api.getAllAgentSessions).toHaveBeenCalled();
     });
-    expect(api.getAgentSessions).toHaveBeenCalledTimes(1);
+    expect(api.getAgentSessions).not.toHaveBeenCalled();
     expect(api.createAgentScratch).not.toHaveBeenCalled();
-    expect(screen.getByText('No Codex sessions')).toBeDefined();
+    expect(screen.getByText('No agent sessions')).toBeDefined();
 
     fireEvent.click(screen.getByRole('button', { name: 'Terminals' }));
     expect(screen.getByText('Click to add a session')).toBeDefined();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Codexes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Agents' }));
 
-    expect(api.getAgentSessions).toHaveBeenCalledTimes(1);
+    expect(api.getAllAgentSessions).toHaveBeenCalledTimes(1);
     expect(api.createAgentScratch).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Terminals when agent sessions are disabled', async () => {
+    mockAuth.isLoading = false;
+    mockAuth.isAuthenticated = true;
+    mockAuth.authStatus = { mode: 'local', bootstrap_required: false };
+    (api.getAllAgentSessions as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Agent sessions are disabled in multi-user mode'));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(api.getAllAgentSessions).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Click to add a session')).toBeDefined();
+    });
   });
 
   it('loads config after authentication and applies terminal grid limits', async () => {

@@ -1,9 +1,9 @@
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 
-export type WorkspacePane = 'terminals' | 'desktops' | 'codexes' | 'claudes' | 'copilots';
+export type WorkspacePane = 'terminals' | 'desktops' | 'agents' | 'codexes' | 'claudes' | 'copilots';
 
-export const DEFAULT_WORKSPACE_PANE: WorkspacePane = 'codexes';
+export const DEFAULT_WORKSPACE_PANE: WorkspacePane = 'agents';
 
 interface WorkspacePaneContextValue {
   activePane: WorkspacePane;

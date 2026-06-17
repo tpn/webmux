@@ -11,6 +11,7 @@ const HOST_SWITCHES = [
   { key: 'nv1', publicPrefix: 'nv1-webmux' },
   { key: 'pi', publicPrefix: 'pi-webmux' },
   { key: 'spark', publicPrefix: 'spark-webmux' },
+  { key: 'tiger', publicPrefix: 'tiger-webmux' },
   { key: 'viper', publicPrefix: 'viper-webmux' },
 ].sort((a, b) => a.key.localeCompare(b.key));
 
@@ -134,6 +135,20 @@ export function TopBar({
           }}
         >
           Desktops
+        </button>
+        <button
+          onClick={() => setActivePane('agents')}
+          style={{
+            background: activePane === 'agents' ? '#4aaa6a' : '#1a1a3a',
+            color: '#fff',
+            border: '1px solid #333366',
+            borderRadius: 4,
+            padding: '4px 12px',
+            cursor: 'pointer',
+            fontSize: 13,
+          }}
+        >
+          Agents
         </button>
         <button
           onClick={() => setActivePane('codexes')}

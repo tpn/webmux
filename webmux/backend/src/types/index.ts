@@ -48,7 +48,7 @@ export type SessionKind = 'terminal' | 'vnc' | 'rdp';
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
 export type AgentKind = 'codex' | 'claude' | 'copilot';
 export type AgentWorkspaceName = 'codexes' | 'claudes' | 'copilots';
-export type WorkspaceName = 'terminals' | AgentWorkspaceName;
+export type WorkspaceName = 'terminals' | 'agents' | AgentWorkspaceName;
 export type AgentSessionRole = 'attach' | 'scratch';
 export type CodexSessionRole = AgentSessionRole;
 

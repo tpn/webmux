@@ -19,6 +19,7 @@ describe('Codex API Routes', () => {
   let app: express.Express;
   let sessionBroker: any;
   let transportLauncher: any;
+  let dateNowSpy: jest.SpyInstance<number, []>;
 
   beforeEach(async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'webmux-codex-'));
@@ -26,6 +27,7 @@ describe('Codex API Routes', () => {
     originalShell = process.env.SHELL;
     process.env.WEBMUX_HOME = tmpDir;
     process.env.SHELL = '/bin/test-shell';
+    dateNowSpy = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-06-17T20:10:00.000Z'));
 
     const configDir = path.join(tmpDir, 'config');
     fs.mkdirSync(configDir, { recursive: true });
@@ -84,6 +86,7 @@ describe('Codex API Routes', () => {
     } else {
       process.env.SHELL = originalShell;
     }
+    dateNowSpy.mockRestore();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -112,20 +115,235 @@ describe('Codex API Routes', () => {
     mockTmuxLists({ codex: output });
   }
 
+  function encodedStatusName(name: string) {
+    return Buffer.from(name, 'utf8')
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
+  }
+
+  function writeAgentStatus(kind: string, name: string, status: Record<string, unknown>) {
+    const dir = path.join(tmpDir, 'data', 'agent-status', kind);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${encodedStatusName(name)}.json`), JSON.stringify({
+      kind,
+      name,
+      ...status,
+    }));
+  }
+
+  function readAgentStatus(kind: string, name: string) {
+    const file = path.join(tmpDir, 'data', 'agent-status', kind, `${encodedStatusName(name)}.json`);
+    return JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+  }
+
   function writeAuthConfig(content: string) {
     fs.writeFileSync(path.join(tmpDir, 'config', 'auth.yaml'), content);
   }
 
   it('parses tmux sessions from GET /api/agents/codex/sessions', async () => {
-    mockTmuxList('codex-a\t1\t2\ncodex-b\t3\t0\n');
+    mockTmuxList('codex-alpha-2026-06-14-15-08-55\t1\t2\t1781474936\t1781725677\ncodex-beta\t3\t0\t1781475000\t1781476000\n');
 
     const res = await request(app).get('/api/agents/codex/sessions');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([
-      { name: 'codex-a', windows: 1, attached: 2 },
-      { name: 'codex-b', windows: 3, attached: 0 },
+      {
+        name: 'codex-alpha-2026-06-14-15-08-55',
+        kind: 'codex',
+        display_name: 'alpha',
+        windows: 1,
+        attached: 2,
+        created_at: '2026-06-14T22:08:56.000Z',
+        last_output_at: '2026-06-17T19:47:57.000Z',
+        status: 'unknown',
+        status_source: 'tmux',
+      },
+      {
+        name: 'codex-beta',
+        kind: 'codex',
+        display_name: 'beta',
+        windows: 3,
+        attached: 0,
+        created_at: '2026-06-14T22:10:00.000Z',
+        last_output_at: '2026-06-14T22:26:40.000Z',
+        status: 'stale',
+        status_source: 'tmux',
+      },
     ]);
+  });
+
+  it('returns combined agent sessions with duplicate display names disambiguated by creation time', async () => {
+    mockTmuxLists({
+      codex:
+        'codex-hiccup-output-questions-2026-06-14-20-12-51\t1\t0\t1781493171\t1781727026\n' +
+        'codex-hiccup-output-questions-2026-06-16-11-58-47\t1\t0\t1781636327\t1781670530\n',
+      claude: 'claude-food-2026-06-14-16-32-59\t1\t1\t1781479979\t1781729170\n',
+      copilot: '',
+    });
+
+    const res = await request(app).get('/api/agents/sessions');
+
+    expect(res.status).toBe(200);
+    expect(res.body.map((session: { kind: string; name: string; display_name: string }) => ({
+      kind: session.kind,
+      name: session.name,
+      display_name: session.display_name,
+    }))).toEqual([
+      {
+        kind: 'codex',
+        name: 'codex-hiccup-output-questions-2026-06-14-20-12-51',
+        display_name: 'hiccup-output-questions (1)',
+      },
+      {
+        kind: 'codex',
+        name: 'codex-hiccup-output-questions-2026-06-16-11-58-47',
+        display_name: 'hiccup-output-questions (2)',
+      },
+      {
+        kind: 'claude',
+        name: 'claude-food-2026-06-14-16-32-59',
+        display_name: 'food',
+      },
+    ]);
+  });
+
+  it('returns available combined agent sessions when one agent socket fails', async () => {
+    mockTmuxLists({
+      codex: 'codex-hiccup-2026-06-14-15-08-55\t1\t0\t1781474936\t1781725677\n',
+      claude: new Error('permission denied'),
+      copilot: '',
+    });
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    try {
+      const res = await request(app).get('/api/agents/sessions');
+
+      expect(res.status).toBe(200);
+      expect(res.body.map((session: { kind: string; name: string; display_name: string }) => ({
+        kind: session.kind,
+        name: session.name,
+        display_name: session.display_name,
+      }))).toEqual([
+        {
+          kind: 'codex',
+          name: 'codex-hiccup-2026-06-14-15-08-55',
+          display_name: 'hiccup',
+        },
+      ]);
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Failed to list claude sessions for combined agent list:',
+        expect.any(Error),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('merges hook status metadata for live tmux sessions', async () => {
+    mockTmuxList('codex-hiccup-2026-06-14-15-08-55\t1\t0\t1781474936\t1781725677\n');
+    writeAgentStatus('codex', 'codex-hiccup-2026-06-14-15-08-55', {
+      status: 'waiting',
+      source: 'hook',
+      updated_at: '2026-06-17T20:00:00.000Z',
+      last_ready_at: '2026-06-17T20:00:00.000Z',
+      last_output_at: '2026-06-17T20:00:00.000Z',
+    });
+
+    const res = await request(app).get('/api/agents/codex/sessions');
+
+    expect(res.status).toBe(200);
+    expect(res.body[0]).toMatchObject({
+      name: 'codex-hiccup-2026-06-14-15-08-55',
+      display_name: 'hiccup',
+      last_output_at: '2026-06-17T20:00:00.000Z',
+      status: 'waiting',
+      status_source: 'hook',
+    });
+  });
+
+  it('does not use webmux attach output metadata as the session last output time', async () => {
+    mockTmuxList('codex-hiccup-2026-06-14-15-08-55\t1\t0\t1781474936\t1781476000\n');
+    writeAgentStatus('codex', 'codex-hiccup-2026-06-14-15-08-55', {
+      status: 'working',
+      source: 'webmux',
+      updated_at: '2026-06-17T20:00:00.000Z',
+      last_output_at: '2026-06-17T20:00:00.000Z',
+    });
+
+    const res = await request(app).get('/api/agents/codex/sessions');
+
+    expect(res.status).toBe(200);
+    expect(res.body[0]).toMatchObject({
+      name: 'codex-hiccup-2026-06-14-15-08-55',
+      last_output_at: '2026-06-14T22:26:40.000Z',
+      status: 'working',
+      status_source: 'webmux',
+    });
+  });
+
+  it('uses marked live webmux output metadata as the session last output time', async () => {
+    mockTmuxList('codex-hiccup-2026-06-14-15-08-55\t1\t0\t1781474936\t1781476000\n');
+    writeAgentStatus('codex', 'codex-hiccup-2026-06-14-15-08-55', {
+      status: 'working',
+      source: 'webmux',
+      updated_at: '2026-06-17T20:00:00.000Z',
+      last_output_at: '2026-06-17T20:00:00.000Z',
+      last_output_source: 'live',
+    });
+
+    const res = await request(app).get('/api/agents/codex/sessions');
+
+    expect(res.status).toBe(200);
+    expect(res.body[0]).toMatchObject({
+      name: 'codex-hiccup-2026-06-14-15-08-55',
+      last_output_at: '2026-06-17T20:00:00.000Z',
+      status: 'working',
+      status_source: 'webmux',
+    });
+  });
+
+  it('clears the live output marker when a hook writes a new output timestamp', async () => {
+    const { agentService } = require('@backend/services/agentService');
+
+    await agentService.recordStatus('codex', 'codex-a', {
+      status: 'working',
+      source: 'webmux',
+      last_output_at: '2026-06-17T20:00:00.000Z',
+      last_output_source: 'live',
+    });
+    await agentService.recordStatus('codex', 'codex-a', {
+      status: 'waiting',
+      source: 'hook',
+      last_output_at: '2026-06-17T20:01:00.000Z',
+      last_ready_at: '2026-06-17T20:01:00.000Z',
+    });
+
+    const status = readAgentStatus('codex', 'codex-a');
+    expect(status).toMatchObject({
+      kind: 'codex',
+      name: 'codex-a',
+      status: 'waiting',
+      source: 'hook',
+      last_output_at: '2026-06-17T20:01:00.000Z',
+      last_ready_at: '2026-06-17T20:01:00.000Z',
+    });
+    expect(status.last_output_source).toBeUndefined();
+  });
+
+  it('does not expose stale hook files for sessions no longer in tmux', async () => {
+    mockTmuxList('');
+    writeAgentStatus('codex', 'codex-missing-2026-06-14-15-08-55', {
+      status: 'waiting',
+      source: 'hook',
+      updated_at: '2026-06-17T20:00:00.000Z',
+    });
+
+    const res = await request(app).get('/api/agents/codex/sessions');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
   });
 
   it('returns an empty list when tmux has no codex sessions', async () => {
@@ -208,11 +426,19 @@ describe('Codex API Routes', () => {
     const res = await request(app).get('/api/agents/claude/sessions');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([{ name: 'claude-a', windows: 1, attached: 2 }]);
+    expect(res.body).toEqual([{
+      name: 'claude-a',
+      kind: 'claude',
+      display_name: 'a',
+      windows: 1,
+      attached: 2,
+      status: 'unknown',
+      status_source: 'none',
+    }]);
   });
 
   it('returns an empty Copilot session list when the tmux socket has no server', async () => {
-    mockTmuxLists({ copilot: new Error('no server running on /tmp/tmux-1000/copilot') });
+    mockTmuxLists({ copilot: new Error('error connecting to /tmp/tmux-1000/copilot (No such file or directory)') });
 
     const res = await request(app).get('/api/agents/copilot/sessions');
 
@@ -258,11 +484,14 @@ describe('Codex API Routes', () => {
     const token = signToken('alice');
 
     const list = await request(app).get('/api/agents/codex/sessions').set('Authorization', `Bearer ${token}`);
+    const combinedList = await request(app).get('/api/agents/sessions').set('Authorization', `Bearer ${token}`);
     const attach = await request(app).post('/api/agents/codex/attach').set('Authorization', `Bearer ${token}`).send({ name: 'codex-a' });
 
     expect(list.status).toBe(403);
+    expect(combinedList.status).toBe(403);
     expect(attach.status).toBe(403);
     expect(list.body.error).toBe('Agent sessions are disabled in multi-user mode');
+    expect(combinedList.body.error).toBe('Agent sessions are disabled in multi-user mode');
     expect(attach.body.error).toBe('Agent sessions are disabled in multi-user mode');
     expect(mockExecFile).not.toHaveBeenCalled();
   });

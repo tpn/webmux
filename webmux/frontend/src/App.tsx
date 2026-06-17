@@ -45,7 +45,7 @@ interface AuthenticatedAppProps {
   globalLockVersion: number;
 }
 
-const agentPanes = new Set<WorkspacePane>(['codexes', 'claudes', 'copilots']);
+const agentPanes = new Set<WorkspacePane>(['agents', 'codexes', 'claudes', 'copilots']);
 
 function isAgentPane(pane: WorkspacePane): boolean {
   return agentPanes.has(pane);
@@ -77,7 +77,7 @@ function AuthenticatedApp({
   onGlobalLockSync,
   globalLockVersion,
 }: AuthenticatedAppProps) {
-  const { activePane } = useWorkspacePane();
+  const { activePane, setActivePane } = useWorkspacePane();
   const [mountedAgentPanes, setMountedAgentPanes] = useState<Set<WorkspacePane>>(() => new Set());
 
   useEffect(() => {
@@ -94,6 +94,9 @@ function AuthenticatedApp({
     (pane: WorkspacePane) => activePane === pane || mountedAgentPanes.has(pane),
     [activePane, mountedAgentPanes],
   );
+  const handleAgentAccessDenied = useCallback(() => {
+    setActivePane('terminals');
+  }, [setActivePane]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -136,6 +139,18 @@ function AuthenticatedApp({
         <div style={{ display: activePane === 'desktops' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
           <GraphicsWorkspace />
         </div>
+        {shouldMountAgentPane('agents') && (
+          <div style={{ display: activePane === 'agents' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
+            <AgentWorkspace
+              fontSize={fontSize}
+              termCols={termCols}
+              termRows={termRows}
+              themes={themes}
+              globalTheme={globalTheme}
+              onAgentAccessDenied={handleAgentAccessDenied}
+            />
+          </div>
+        )}
         {shouldMountAgentPane('codexes') && (
           <div style={{ display: activePane === 'codexes' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
             <CodexWorkspace
@@ -144,6 +159,7 @@ function AuthenticatedApp({
               termRows={termRows}
               themes={themes}
               globalTheme={globalTheme}
+              onAgentAccessDenied={handleAgentAccessDenied}
             />
           </div>
         )}
@@ -156,6 +172,7 @@ function AuthenticatedApp({
               termRows={termRows}
               themes={themes}
               globalTheme={globalTheme}
+              onAgentAccessDenied={handleAgentAccessDenied}
             />
           </div>
         )}
@@ -168,6 +185,7 @@ function AuthenticatedApp({
               termRows={termRows}
               themes={themes}
               globalTheme={globalTheme}
+              onAgentAccessDenied={handleAgentAccessDenied}
             />
           </div>
         )}

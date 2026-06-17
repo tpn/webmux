@@ -142,6 +142,7 @@ export const api = {
     request<AppConfig>('/config', { method: 'PUT', body: JSON.stringify(config) }),
 
   // Agent sessions
+  getAllAgentSessions: () => request<AgentTmuxSession[]>('/agents/sessions'),
   getAgentSessions: (kind: AgentKind) => request<AgentTmuxSession[]>(`/agents/${kind}/sessions`),
   attachAgentSession: (kind: AgentKind, req: { name: string; cols: number; rows: number }) =>
     request<Session>(`/agents/${kind}/attach`, { method: 'POST', body: JSON.stringify(req) }),

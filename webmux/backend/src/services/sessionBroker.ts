@@ -7,6 +7,7 @@ import { presenceService } from './presenceService';
 import { persistence } from './persistenceManager';
 import { compactPositions } from './gridLayout';
 import { assertTerminalGridPosition, nextTerminalGridPosition } from './terminalGridLimits';
+import { agentService } from './agentService';
 import type { AgentKind, AgentSessionRole, AgentWorkspaceName, CodexSessionRole, WorkspaceName } from '../types';
 
 const AGENT_WORKSPACES = new Set<WorkspaceName>(['codexes', 'claudes', 'copilots']);
@@ -31,6 +32,48 @@ function agentSessionName(session: Session) {
   return session.agent_session_name ?? session.codex_session_name;
 }
 
+interface AgentStatusUpdate {
+  status: 'working';
+  source: 'webmux';
+  last_input_at?: string;
+  last_output_at?: string;
+  last_output_source?: 'live';
+}
+
+interface PendingAgentStatusUpdate {
+  kind: AgentKind;
+  name: string;
+  update: AgentStatusUpdate;
+}
+
+function agentStatusKey(kind: AgentKind, name: string): string {
+  return `${kind}:${name}`;
+}
+
+function latestIso(left: string | undefined, right: string | undefined): string | undefined {
+  if (!left) return right;
+  if (!right) return left;
+  return Date.parse(right) >= Date.parse(left) ? right : left;
+}
+
+function mergeAgentStatusUpdates(current: AgentStatusUpdate, next: AgentStatusUpdate): AgentStatusUpdate {
+  const lastOutputAt = latestIso(current.last_output_at, next.last_output_at);
+  const nextOutputIsLatest = !!next.last_output_at && lastOutputAt === next.last_output_at;
+  return {
+    status: next.status,
+    source: next.source,
+    last_input_at: latestIso(current.last_input_at, next.last_input_at),
+    last_output_at: lastOutputAt,
+    last_output_source: nextOutputIsLatest ? next.last_output_source : current.last_output_source,
+  };
+}
+
+function argvEqual(left: string[] | undefined, right: string[] | undefined): boolean {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
 interface InternalCreateSessionOptions {
   title?: string;
   persistent?: boolean;
@@ -48,7 +91,12 @@ export class SessionBroker extends EventEmitter {
   private sessions = new Map<string, Session>();
   private scrollback = new Map<string, string>();
   private launchGenerations = new Map<string, number>();
+  private pendingAgentStatusUpdates = new Map<string, PendingAgentStatusUpdate>();
+  private agentStatusFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private agentStatusWrites = new Map<string, Promise<void>>();
   private static readonly SCROLLBACK_SIZE = 64 * 1024;
+  private static AGENT_ATTACH_REPLAY_SUPPRESS_MS = 1500;
+  private static AGENT_STATUS_FLUSH_DEBOUNCE_MS = 200;
 
   constructor() {
     super();
@@ -212,6 +260,9 @@ export class SessionBroker extends EventEmitter {
   private wireEvents(session: Session, ptyProcess: pty.IPty, initialCmd: string | undefined, generation: number): void {
     let firstData = true;
     let cmdInjected = false;
+    const suppressAgentOutputUntil = agentRole(session) === 'attach'
+      ? Date.now() + SessionBroker.AGENT_ATTACH_REPLAY_SUPPRESS_MS
+      : 0;
 
     ptyProcess.onData((data: string) => {
       if (!this.isCurrentLaunch(session.id, generation)) return;
@@ -254,6 +305,7 @@ export class SessionBroker extends EventEmitter {
         session_id: session.id,
         data,
       });
+      this.recordAgentActivity(session, 'output', Date.now() < suppressAgentOutputUntil);
     });
 
     ptyProcess.onExit(({ exitCode }: { exitCode: number }) => {
@@ -365,10 +417,25 @@ export class SessionBroker extends EventEmitter {
     const existing = attachSessions.find(s => agentSessionName(s) === name) ?? attachSessions[0];
     if (existing) {
       const shouldRelaunch = agentSessionName(existing) !== name;
+      const shouldResize = existing.cols !== cols || existing.rows !== rows;
+      const desiredCodexRole = kind === 'codex' ? 'attach' : existing.codex_role;
+      const desiredCodexSessionName = kind === 'codex' ? name : existing.codex_session_name;
+      const metadataChanged =
+        existing.title !== name ||
+        !argvEqual(existing.exec_argv, execArgv) ||
+        existing.agent_kind !== kind ||
+        existing.agent_role !== 'attach' ||
+        existing.agent_session_name !== name ||
+        existing.codex_role !== desiredCodexRole ||
+        existing.codex_session_name !== desiredCodexSessionName;
+      const needsRelaunch = shouldRelaunch || !transportLauncher.isAlive(existing.id) || existing.state === 'disconnected' || existing.state === 'error';
       for (const stale of attachSessions) {
         if (stale.id !== existing.id) {
           await this.delete(stale.id);
         }
+      }
+      if (!needsRelaunch && !shouldResize && !metadataChanged) {
+        return { session: existing, created: false };
       }
       existing.cols = cols;
       existing.rows = rows;
@@ -382,9 +449,9 @@ export class SessionBroker extends EventEmitter {
         existing.codex_session_name = name;
       }
       existing.updated_at = new Date().toISOString();
-      if (shouldRelaunch || !transportLauncher.isAlive(existing.id) || existing.state === 'disconnected' || existing.state === 'error') {
+      if (needsRelaunch) {
         this.relaunch(existing);
-      } else {
+      } else if (shouldResize) {
         transportLauncher.resize(existing.id, cols, rows);
       }
       this.persistSessions();
@@ -528,7 +595,62 @@ export class SessionBroker extends EventEmitter {
     const handle = transportLauncher.getHandle(sessionId);
     if (handle) {
       handle.write(data);
+      const session = this.sessions.get(sessionId);
+      if (session) this.recordAgentActivity(session, 'input');
     }
+  }
+
+  private recordAgentActivity(session: Session, activity: 'input' | 'output', replayOutput = false): void {
+    const kind = inferAgentKind(session);
+    const role = agentRole(session);
+    const name = agentSessionName(session);
+    if (!kind || role !== 'attach' || !name) return;
+    if (activity === 'output' && replayOutput) return;
+
+    const now = new Date().toISOString();
+    const update = activity === 'input'
+      ? { status: 'working' as const, source: 'webmux' as const, last_input_at: now }
+      : { status: 'working' as const, source: 'webmux' as const, last_output_at: now, last_output_source: 'live' as const };
+    this.queueAgentStatusUpdate(kind, name, update);
+  }
+
+  private queueAgentStatusUpdate(kind: AgentKind, name: string, update: AgentStatusUpdate): void {
+    const key = agentStatusKey(kind, name);
+    const pending = this.pendingAgentStatusUpdates.get(key);
+    this.pendingAgentStatusUpdates.set(key, pending
+      ? { ...pending, update: mergeAgentStatusUpdates(pending.update, update) }
+      : { kind, name, update });
+
+    const existingTimer = this.agentStatusFlushTimers.get(key);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    const timer = setTimeout(() => this.flushAgentStatusUpdate(key), SessionBroker.AGENT_STATUS_FLUSH_DEBOUNCE_MS);
+    this.agentStatusFlushTimers.set(key, timer);
+  }
+
+  private flushAgentStatusUpdate(key: string): void {
+    const timer = this.agentStatusFlushTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.agentStatusFlushTimers.delete(key);
+    }
+
+    const pending = this.pendingAgentStatusUpdates.get(key);
+    if (!pending) return;
+    this.pendingAgentStatusUpdates.delete(key);
+
+    const previousWrite = this.agentStatusWrites.get(key) ?? Promise.resolve();
+    let write: Promise<void>;
+    write = previousWrite
+      .catch(() => undefined)
+      .then(() => agentService.recordStatus(pending.kind, pending.name, pending.update))
+      .catch(err => console.error(`Failed to record ${pending.kind} agent status:`, err))
+      .finally(() => {
+        if (this.agentStatusWrites.get(key) === write) {
+          this.agentStatusWrites.delete(key);
+        }
+      });
+    this.agentStatusWrites.set(key, write);
   }
 
   private persistSessions(): void {

@@ -7,6 +7,7 @@ interface CodexWorkspaceProps {
   termRows: number;
   themes: NamedTheme[];
   globalTheme: string | null;
+  onAgentAccessDenied?: () => void;
 }
 
 export function CodexWorkspace(props: CodexWorkspaceProps) {

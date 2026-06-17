@@ -9,6 +9,7 @@ function TestConsumer() {
       <span data-testid="pane">{activePane}</span>
       <button onClick={() => setActivePane('desktops')}>go desktops</button>
       <button onClick={() => setActivePane('terminals')}>go terminals</button>
+      <button onClick={() => setActivePane('agents')}>go agents</button>
       <button onClick={() => setActivePane('codexes')}>go codexes</button>
       <button onClick={() => setActivePane('claudes')}>go claudes</button>
       <button onClick={() => setActivePane('copilots')}>go copilots</button>
@@ -17,13 +18,13 @@ function TestConsumer() {
 }
 
 describe('WorkspacePaneContext', () => {
-  it('returns codexes as the default activePane', () => {
+  it('returns agents as the default activePane', () => {
     render(
       <WorkspacePaneProvider>
         <TestConsumer />
       </WorkspacePaneProvider>,
     );
-    expect(screen.getByTestId('pane').textContent).toBe('codexes');
+    expect(screen.getByTestId('pane').textContent).toBe('agents');
   });
 
   it('updates activePane to desktops after setActivePane("desktops")', () => {
@@ -55,7 +56,7 @@ describe('WorkspacePaneContext', () => {
       </WorkspacePaneProvider>,
     );
     // Initial render reflects provider default
-    expect(screen.getByTestId('pane').textContent).toBe('codexes');
+    expect(screen.getByTestId('pane').textContent).toBe('agents');
   });
 
   it('updates activePane to codexes after setActivePane("codexes")', () => {
@@ -74,6 +75,8 @@ describe('WorkspacePaneContext', () => {
         <TestConsumer />
       </WorkspacePaneProvider>,
     );
+    fireEvent.click(screen.getByText('go agents'));
+    expect(screen.getByTestId('pane').textContent).toBe('agents');
     fireEvent.click(screen.getByText('go claudes'));
     expect(screen.getByTestId('pane').textContent).toBe('claudes');
     fireEvent.click(screen.getByText('go copilots'));
