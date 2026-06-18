@@ -150,6 +150,7 @@ describe('TopBar', () => {
       const hostSwitcher = screen.getByTestId('host-switcher');
       expect(hostSwitcher.parentElement?.getAttribute('data-testid')).toBe('topbar');
       expect(Array.from(hostSwitcher.querySelectorAll('[data-testid="host-switch-link"], [data-testid="host-switch-current"]')).map(el => el.textContent)).toEqual([
+        'air',
         'dgx',
         'leopard',
         'nv1',
@@ -161,6 +162,7 @@ describe('TopBar', () => {
 
       expect(screen.getByTestId('host-switch-current')).toHaveTextContent('nv1');
       expect(screen.getByTestId('host-switch-current').tagName.toLowerCase()).toBe('span');
+      expect(screen.getByRole('link', { name: 'air' })).toHaveAttribute('href', 'https://air-webmux.trent.me/');
       expect(screen.getByRole('link', { name: 'dgx' })).toHaveAttribute('href', 'https://dgx-webmux.trent.me/');
       expect(screen.getByRole('link', { name: 'leopard' })).toHaveAttribute('href', 'https://leopard-webmux.trent.me/');
       expect(screen.getByRole('link', { name: 'pi' })).toHaveAttribute('href', 'https://pi-webmux.trent.me/');
@@ -175,6 +177,7 @@ describe('TopBar', () => {
       render(<TopBar {...defaultTopBarProps()} />, { wrapper });
 
       expect(screen.getByTestId('host-switch-current')).toHaveTextContent('spark');
+      expect(screen.getByRole('link', { name: 'air' })).toHaveAttribute('href', 'https://air-webmux.tpn.nyc/');
       expect(screen.getByRole('link', { name: 'dgx' })).toHaveAttribute('href', 'https://dgx-webmux.tpn.nyc/');
       expect(screen.getByRole('link', { name: 'leopard' })).toHaveAttribute('href', 'https://leopard-webmux.tpn.nyc/');
       expect(screen.getByRole('link', { name: 'nv1' })).toHaveAttribute('href', 'https://nv1-webmux.tpn.nyc/');

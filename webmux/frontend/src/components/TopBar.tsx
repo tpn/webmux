@@ -6,6 +6,7 @@ import { useWorkspacePane } from '../contexts/WorkspacePaneContext';
 import { HelpDialog } from './HelpDialog';
 
 const HOST_SWITCHES = [
+  { key: 'air', publicPrefix: 'air-webmux' },
   { key: 'dgx', publicPrefix: 'dgx-webmux' },
   { key: 'leopard', publicPrefix: 'leopard-webmux' },
   { key: 'nv1', publicPrefix: 'nv1-webmux' },
