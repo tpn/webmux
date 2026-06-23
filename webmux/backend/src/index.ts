@@ -79,6 +79,7 @@ async function main(): Promise<void> {
   }
 
   const app = express();
+  app.set('trust proxy', 'loopback');
 
   // CORS: restrict to same-origin in secure mode, permissive in trusted mode
   if (appConfig.app.secure_mode) {

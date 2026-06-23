@@ -382,6 +382,31 @@ describe('Codex API Routes', () => {
     expect(second.body.exec_argv).toEqual(['tmux', '-L', 'codex', 'attach-session', '-t', 'codex-b']);
   });
 
+  it('marks codex attach sessions connected without waiting for fresh tmux output', async () => {
+    mockTmuxList('codex-a\t1\t0\n');
+
+    const res = await request(app).post('/api/agents/codex/attach').send({ name: 'codex-a', cols: 120, rows: 40 });
+
+    expect(res.status).toBe(201);
+    expect(res.body.state).toBe('connected');
+    expect(sessionBroker.get(res.body.id).state).toBe('connected');
+  });
+
+  it('corrects a live codex attach session that is still marked connecting when reused', async () => {
+    mockTmuxList('codex-a\t1\t0\n');
+
+    const first = await request(app).post('/api/agents/codex/attach').send({ name: 'codex-a', cols: 120, rows: 40 });
+    const existing = sessionBroker.get(first.body.id);
+    existing.state = 'connecting';
+
+    const second = await request(app).post('/api/agents/codex/attach').send({ name: 'codex-a', cols: 120, rows: 40 });
+
+    expect(second.status).toBe(200);
+    expect(second.body.id).toBe(first.body.id);
+    expect(second.body.state).toBe('connected');
+    expect(sessionBroker.get(first.body.id).state).toBe('connected');
+  });
+
   it('excludes codex sessions from normal /api/sessions', async () => {
     mockTmuxList('codex-a\t1\t0\n');
 

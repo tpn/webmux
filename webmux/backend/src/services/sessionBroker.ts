@@ -235,6 +235,7 @@ export class SessionBroker extends EventEmitter {
         if (tpl?.initialCmd) initialCmd = tpl.initialCmd;
       }
       this.wireEvents(session, ptyProcess, initialCmd, generation);
+      this.markAgentAttachReady(session);
     } catch (err) {
       session.state = 'error';
       session.updated_at = new Date().toISOString();
@@ -257,6 +258,25 @@ export class SessionBroker extends EventEmitter {
     return this.launchGenerations.get(sessionId) === generation && this.sessions.has(sessionId);
   }
 
+  private markConnected(session: Session, broadcast = false): boolean {
+    const changed = session.state !== 'connected';
+    session.state = 'connected';
+    session.updated_at = new Date().toISOString();
+    if (broadcast) {
+      presenceService.broadcastToSession(session.id, {
+        type: 'status',
+        session_id: session.id,
+        state: 'connected',
+      });
+    }
+    return changed;
+  }
+
+  private markAgentAttachReady(session: Session, broadcast = false): boolean {
+    if (agentRole(session) !== 'attach') return false;
+    return this.markConnected(session, broadcast);
+  }
+
   private wireEvents(session: Session, ptyProcess: pty.IPty, initialCmd: string | undefined, generation: number): void {
     let firstData = true;
     let cmdInjected = false;
@@ -268,8 +288,7 @@ export class SessionBroker extends EventEmitter {
       if (!this.isCurrentLaunch(session.id, generation)) return;
       if (firstData) {
         firstData = false;
-        session.state = 'connected';
-        session.updated_at = new Date().toISOString();
+        this.markConnected(session, true);
         // Inject initial command after a brief delay so the shell prompt is ready
         if (initialCmd && !cmdInjected) {
           cmdInjected = true;
@@ -279,11 +298,6 @@ export class SessionBroker extends EventEmitter {
             catch { /* session may have closed */ }
           }, 800);
         }
-        presenceService.broadcastToSession(session.id, {
-          type: 'status',
-          session_id: session.id,
-          state: 'connected',
-        });
         this.persistSessions();
       }
 
@@ -435,6 +449,9 @@ export class SessionBroker extends EventEmitter {
         }
       }
       if (!needsRelaunch && !shouldResize && !metadataChanged) {
+        if (this.markAgentAttachReady(existing, true)) {
+          this.persistSessions();
+        }
         return { session: existing, created: false };
       }
       existing.cols = cols;
@@ -453,6 +470,9 @@ export class SessionBroker extends EventEmitter {
         this.relaunch(existing);
       } else if (shouldResize) {
         transportLauncher.resize(existing.id, cols, rows);
+        this.markAgentAttachReady(existing, true);
+      } else {
+        this.markAgentAttachReady(existing, true);
       }
       this.persistSessions();
       return { session: existing, created: false };
@@ -545,6 +565,7 @@ export class SessionBroker extends EventEmitter {
     try {
       const ptyProcess = transportLauncher.launch(session, undefined, session.key_id || undefined);
       this.wireEvents(session, ptyProcess, undefined, generation);
+      this.markAgentAttachReady(session, true);
     } catch (err) {
       session.state = 'error';
       session.updated_at = new Date().toISOString();
